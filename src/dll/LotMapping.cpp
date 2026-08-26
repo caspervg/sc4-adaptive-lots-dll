@@ -4,25 +4,26 @@
 
 bool LotMapping::Table::Add(const uint32_t queryExemplarId, const std::span<const uint32_t> values)
 {
-	if (queryExemplarId == 0 || values.empty() || values.size() % 3 != 0)
+	if (queryExemplarId == 0 || values.empty() || values.size() % 4 != 0)
 	{
 		return false;
 	}
 
-	for (size_t i = 0; i < values.size(); i += 3)
+	for (size_t i = 0; i < values.size(); i += 4)
 	{
-		if (values[i] > 12 || values[i + 1] == 0 || values[i + 2] == 0)
+		if (values[i] > 12 || values[i + 1] == 0 || values[i + 3] == 0)
 		{
 			return false;
 		}
 	}
 
 	auto& entries = byQuery_[queryExemplarId];
-	for (size_t i = 0; i < values.size(); i += 3)
+	for (size_t i = 0; i < values.size(); i += 4)
 	{
-		const Entry entry{values[i], values[i + 1], values[i + 2]};
+		const Entry entry{values[i], values[i + 1], values[i + 2], values[i + 3]};
 		const auto existing = std::ranges::find_if(entries, [&](const Entry& value) {
-			return value.networkType == entry.networkType && value.pieceId == entry.pieceId;
+			return value.networkType == entry.networkType && value.pieceId == entry.pieceId
+				&& value.variant == entry.variant;
 		});
 		if (existing == entries.end())
 		{
@@ -50,7 +51,7 @@ const std::vector<LotMapping::Entry>* LotMapping::Table::Get(const uint32_t quer
 uint32_t LotMapping::Table::Find(
 	const uint32_t queryExemplarId,
 	const uint32_t networkType,
-	const uint32_t pieceId) const
+	const uint32_t pieceId, const uint32_t variant) const
 {
 	const auto* entries = Get(queryExemplarId);
 	if (!entries)
@@ -59,9 +60,22 @@ uint32_t LotMapping::Table::Find(
 	}
 
 	const auto it = std::ranges::find_if(*entries, [&](const Entry& entry) {
-		return entry.networkType == networkType && entry.pieceId == pieceId;
+		return entry.networkType == networkType && entry.pieceId == pieceId && entry.variant == variant;
 	});
 	return it == entries->end() ? 0 : it->lotConfigId;
+}
+
+uint32_t LotMapping::Table::VariantCount(
+	const uint32_t queryExemplarId, const uint32_t networkType, const uint32_t pieceId) const
+{
+	const auto* entries = Get(queryExemplarId);
+	if (!entries)
+	{
+		return 0;
+	}
+	return static_cast<uint32_t>(std::ranges::count_if(*entries, [&](const Entry& entry) {
+		return entry.networkType == networkType && entry.pieceId == pieceId;
+	}));
 }
 
 void LotMapping::Table::Clear()

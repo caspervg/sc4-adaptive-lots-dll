@@ -98,29 +98,31 @@ Mappings are ordinary exemplar resources stored in a DBPF package. Each mapping 
 | Resource type | `0x6534284A` |
 | Resource group | `0xA0907C10` |
 | Resource instance | Any unique IID |
-| `0xA0907C11` | Schema version; `Uint32` value `1` |
 | `0xA0907C12` | Catalog Building Exemplar ID; one `Uint32` IID |
-| `0xA0907C13` | Network mappings; a repeating `Uint32` array |
+| `0xA0907C13` | Network/variant mappings; a repeating `Uint32` array |
 
-Property `0xA0907C13` is a sequence of triples:
+Property `0xA0907C13` is a sequence of quadruples:
 
 ```text
-network type, exact network piece IID, replacement lot configuration IID
+network type, exact network piece IID, variant index, replacement lot configuration IID
 ```
 
 For example, these entries select three different lot configurations for one catalog building:
 
 ```text
-0x00000000, 0x00004B00, 0x0C9DC024   # Road
-0x00000003, 0x5E54B200, 0x0C9DBFE0   # Street / SAM 2
-0x00000003, 0x5E54B900, 0x0C9DBFFA   # Street / SAM 9
+0x00000000, 0x00004B00, 0, 0x0C9DC024   # Road / variant 0
+0x00000000, 0x00004B00, 1, 0x0C9DC023   # Road / variant 1
+0x00000003, 0x5E54B200, 0, 0x0C9DBFE0   # Street / SAM 2
+0x00000003, 0x5E54B900, 0, 0x0C9DBFFA   # Street / SAM 9
 ```
+
+For a network/piece ring, add consecutive zero-based variant indices. While the placement tool is active, `Tab` advances to the next variant and `Alt+Tab` moves backward; the DLL immediately reruns the vanilla mouse-move path so the preview effect and props are rebuilt from the selected lot configuration.
 
 The network type is the game's numeric network ID from 0 through 12. Common values include Road `0`, Rail `1`, Highway `2`, Street `3`, Avenue `6`, Light Rail `8`, Monorail `9`, One-Way Road `10`, Dirt Road `11`, and Ground Highway `12`.
 
 The exact piece IID is important: override networks such as SAM share the Street base network type but expose different piece IDs. Rotation and flip are reported for diagnosis but are not part of the mapping key.
 
-Multiple mapping exemplars may use the same catalog building exemplar ID; their entries are merged. Avoid defining the same network-type and piece-ID pair more than once, because the later-loaded entry replaces the earlier one.
+Multiple mapping exemplars may use the same catalog building exemplar ID; their entries are merged. Variant indices form a zero-based ring for each network-type and piece-ID pair. Avoid defining the same network-type, piece-ID, and variant more than once.
 
 An entire mapping exemplar is ignored when:
 
@@ -136,7 +138,7 @@ The easiest probe is the DLL's debug log:
 
 1. Set `LogLevel=debug` in `SC4AdaptiveLotsDll.ini`.
 2. Create a temporary mapping exemplar for the catalog building.
-3. Add one placeholder triple for each network type you want to inspect. Use a nonzero placeholder piece IID and an existing lot configuration IID.
+3. Add one placeholder quadruple for each network type you want to inspect. Use a nonzero placeholder piece IID, variant `0`, and an existing lot configuration IID.
 4. Restart the game, select the menu item, and hover over the target network pieces.
 5. Read `SC4AdaptiveLotsDll.log`.
 
@@ -152,7 +154,7 @@ Here `0C9DC024` is the catalog building exemplar ID expected by property `0xA090
 Adaptive query 0C9DC024: network 3, piece 5E54B200, rotation 0, flip 0.
 ```
 
-Use network `3` and piece `0x5E54B200` in a real mapping triple, then replace the placeholder lot value with the IID of the matching lot configuration exemplar.
+Use network `3` and piece `0x5E54B200` in a real mapping quadruple, then replace the placeholder lot value with the IID of the matching lot configuration exemplar. Add additional variant indices for alternate footprints or transit-switch configurations.
 
 Lot configuration IIDs can be found by inspecting the existing variants in Reader or another DBPF editor. Verify that each replacement is a complete, working lot configuration with compatible geometry and transit behavior; the DLL selects configurations but does not repair incompatible lots.
 
@@ -160,8 +162,8 @@ Restart SimCity 4 after adding or changing a mapping package so the game reloads
 
 ## Troubleshooting
 
-- **The log says zero catalog mappings were loaded:** check the exemplar resource group and all three property IDs, then restart the game.
-- **The network and piece appear in the debug log but the preview does not change:** verify that the triple contains that exact pair and that the replacement lot configuration IID exists.
+- **The log says zero catalog mappings were loaded:** check the exemplar resource group and all mapping property IDs, then restart the game.
+- **The network and piece appear in the debug log but the preview does not change:** verify that the quadruple contains that exact pair and that the replacement lot configuration IID exists.
 - **The preview changes but placement fails:** test the replacement lot normally and check its size, transit switches, paths, and placement requirements.
 - **The hooks are not installed:** confirm that the executable is SimCity 4 version 1.1.641 and check the log for a patch-byte mismatch.
 - **An unmapped network behaves normally:** this is intentional fallback behavior.

@@ -8,6 +8,7 @@
 #include <array>
 #include <cstdint>
 #include <cstring>
+#include <windows.h>
 
 #include "GZServPtrs.h"
 #include "cGZPersistResourceKey.h"
@@ -34,7 +35,12 @@ namespace
 	constexpr uintptr_t kConstructorCall = 0x007EA49B;
 	constexpr uintptr_t kAutomaticFacing = 0x004BEB70;
 	constexpr uintptr_t kAutomaticFacingCall = 0x004C345E;
+	constexpr uintptr_t kPlaceLotMouseMove = 0x004C3300;
+	constexpr uintptr_t kChangeLotConfiguration = 0x004C1360;
 	constexpr uintptr_t kPlaceLot = 0x004C1740;
+	constexpr uintptr_t kPlaceLotVtable = 0x00A90738;
+	constexpr uintptr_t kPlaceLotOnKeyDown = 0x004C3060;
+	constexpr size_t kOnKeyDownVtableSlot = 14;
 	constexpr uintptr_t kTollPicker = 0x004BFB30;
 	constexpr uintptr_t kTollPreviewCall = 0x004C3415;
 	constexpr uintptr_t kTollCommitCall = 0x004C186C;
@@ -64,6 +70,13 @@ namespace
 	void* activeControl;
 	uint32_t originalQueryId;
 	uint32_t selectedLotConfigId;
+	uint32_t selectedVariant = 0;
+	uint32_t selectedNetwork = UINT32_MAX;
+	uint32_t selectedPiece = UINT32_MAX;
+	using KeyDown = bool (__thiscall*)(void*, int32_t, uint32_t);
+	using MouseMove = bool (__thiscall*)(void*, int32_t, int32_t, uint32_t);
+	using ChangeLotConfiguration = void (__thiscall*)(void*, uint32_t);
+	KeyDown originalKeyDown = nullptr;
 	uint32_t lastLoggedQuery = UINT32_MAX;
 	uint32_t lastLoggedNetwork = UINT32_MAX;
 	uint32_t lastLoggedPiece = UINT32_MAX;
@@ -170,8 +183,16 @@ namespace
 					occupant->GetFlip());
 			}
 
+			const uint32_t pieceId = occupant->PieceId();
+			const uint32_t variantCount = mappings.VariantCount(originalQueryId, entry.networkType, pieceId);
+			if (variantCount && (selectedNetwork != entry.networkType || selectedPiece != pieceId))
+			{
+				selectedNetwork = entry.networkType;
+				selectedPiece = pieceId;
+				selectedVariant = 0;
+			}
 			const uint32_t lotConfigId = mappings.Find(
-				originalQueryId, entry.networkType, occupant->PieceId());
+				originalQueryId, entry.networkType, pieceId, selectedVariant);
 			if (!lotConfigId)
 			{
 				continue;
@@ -201,8 +222,39 @@ namespace
 		activeControl = result;
 		originalQueryId = queryExemplarId;
 		selectedLotConfigId = 0;
+		selectedVariant = 0;
+		selectedNetwork = UINT32_MAX;
+		selectedPiece = UINT32_MAX;
 		LOG_DEBUG("PlaceLot control {:p} created for query {:08X}.", result, queryExemplarId);
 		return result;
+	}
+
+	bool __fastcall HookedKeyDown(void* control, void*, const int32_t vkCode, const uint32_t modifiers)
+	{
+		if (control == activeControl && vkCode == VK_TAB && selectedNetwork != UINT32_MAX
+			&& selectedPiece != UINT32_MAX)
+		{
+			const uint32_t count = mappings.VariantCount(originalQueryId, selectedNetwork, selectedPiece);
+			if (count > 1)
+			{
+				const bool backwards = (GetAsyncKeyState(VK_MENU) & 0x8000) != 0;
+				selectedVariant = backwards
+					? (selectedVariant + count - 1) % count
+					: (selectedVariant + 1) % count;
+				LOG_DEBUG("Adaptive query {:08X}: selected variant {} of {}.",
+					originalQueryId, selectedVariant, count);
+				const uint32_t lotConfigId = mappings.Find(
+					originalQueryId, selectedNetwork, selectedPiece, selectedVariant);
+				if (lotConfigId)
+				{
+					reinterpret_cast<ChangeLotConfiguration>(kChangeLotConfiguration)(control, lotConfigId);
+				}
+				reinterpret_cast<MouseMove>(kPlaceLotMouseMove)(
+					control, FieldAt<int32_t>(control, 0x44), FieldAt<int32_t>(control, 0x48), 0x100);
+				return true;
+			}
+		}
+		return originalKeyDown ? originalKeyDown(control, vkCode, modifiers) : false;
 	}
 
 	using AutomaticFacing = bool (__thiscall*)(void*, void*, float*, uint32_t*, void*);
@@ -218,7 +270,10 @@ namespace
 		{
 			selectedLotConfigId = FindMappedLotConfig(control, cursorPosition);
 			const uint32_t lotConfigId = selectedLotConfigId ? selectedLotConfigId : originalQueryId;
-			FieldAt<uint32_t>(control, kLotConfigIdOffset) = lotConfigId;
+			if (FieldAt<uint32_t>(control, kLotConfigIdOffset) != lotConfigId)
+			{
+				reinterpret_cast<ChangeLotConfiguration>(kChangeLotConfiguration)(control, lotConfigId);
+			}
 
 			cISC4City* const city = GetCity();
 			if (city && city->GetLotConfigurationManager())
@@ -300,7 +355,8 @@ bool AdaptiveLots::Install()
 		&& IsCallTo(kAutomaticFacingCall, kAutomaticFacing)
 		&& HasPlaceLotPrologue()
 		&& IsCallTo(kTollPreviewCall, kTollPicker)
-		&& IsCallTo(kTollCommitCall, kTollPicker);
+		&& IsCallTo(kTollCommitCall, kTollPicker)
+		&& *reinterpret_cast<uintptr_t*>(kPlaceLotVtable + kOnKeyDownVtableSlot * sizeof(void*)) == kPlaceLotOnKeyDown;
 	if (!valid)
 	{
 		LOG_ERROR("Adaptive lot hooks were not installed because the 1.1.641 patch bytes did not match.");
@@ -310,6 +366,10 @@ bool AdaptiveLots::Install()
 	Patcher::InstallCallHook(kConstructorCall, reinterpret_cast<void*>(&HookedConstructor));
 	Patcher::InstallCallHook(kAutomaticFacingCall, reinterpret_cast<void*>(&HookedAutomaticFacing));
 	Patcher::InstallHook(kPlaceLot, &HookedPlaceLot);
+	originalKeyDown = reinterpret_cast<KeyDown>(
+		*reinterpret_cast<uintptr_t*>(kPlaceLotVtable + kOnKeyDownVtableSlot * sizeof(void*)));
+	Patcher::InstallJumpTableHook(
+		kPlaceLotVtable + kOnKeyDownVtableSlot * sizeof(void*), reinterpret_cast<void*>(&HookedKeyDown));
 	Patcher::InstallCallHook(kTollPreviewCall, reinterpret_cast<void*>(&HookedTollPicker));
 	Patcher::InstallCallHook(kTollCommitCall, reinterpret_cast<void*>(&HookedTollPicker));
 	LOG_INFO("Installed adaptive lot hooks.");
@@ -320,6 +380,9 @@ void AdaptiveLots::LoadMappings()
 {
 	mappings.Clear();
 	selectedLotConfigId = 0;
+	selectedVariant = 0;
+	selectedNetwork = UINT32_MAX;
+	selectedPiece = UINT32_MAX;
 
 	cIGZPersistResourceManagerPtr resourceManager;
 	if (!resourceManager)
@@ -351,15 +414,12 @@ void AdaptiveLots::LoadMappings()
 		}
 
 		const cISCPropertyHolder* const properties = exemplar->AsISCPropertyHolder();
-		uint32_t schemaVersion = 0;
 		uint32_t queryExemplarId = 0;
 		const cISCProperty* const mapProperty = properties
 			? properties->GetProperty(LotMapping::kPropertyNetworkPieceMap)
 			: nullptr;
 		const cIGZVariant* const values = mapProperty ? mapProperty->GetPropertyValue() : nullptr;
 		if (!properties
-			|| !properties->GetProperty(LotMapping::kPropertySchemaVersion, schemaVersion)
-			|| schemaVersion != LotMapping::kSchemaVersion
 			|| !properties->GetProperty(LotMapping::kPropertyQueryExemplar, queryExemplarId)
 			|| !values
 			|| values->GetType() != cIGZVariant::Uint32Array
