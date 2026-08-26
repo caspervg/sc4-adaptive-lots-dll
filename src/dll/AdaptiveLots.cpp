@@ -25,6 +25,7 @@
 #include "cISCProperty.h"
 #include "cISCPropertyHolder.h"
 #include "cISCResExemplar.h"
+#include "cISCResExemplarCohort.h"
 #include "cRZAutoRefCount.h"
 #include "cRZBaseString.h"
 #include "SC4UI.h"
@@ -503,7 +504,7 @@ void AdaptiveLots::LoadMappings()
 	}
 
 	cRZAutoRefCount<cIGZPersistResourceKeyList> keys;
-	resourceManager->GetAvailableResourceListForType(keys.AsPPObj(), LotMapping::kExemplarType);
+	resourceManager->GetAvailableResourceListForType(keys.AsPPObj(), LotMapping::kCohortType);
 	if (!keys)
 	{
 		return;
@@ -517,14 +518,14 @@ void AdaptiveLots::LoadMappings()
 			continue;
 		}
 
-		cRZAutoRefCount<cISCResExemplar> exemplar;
+		cRZAutoRefCount<cISCResExemplarCohort> cohort;
 		if (!resourceManager->GetResource(
-			key, GZIID_cISCResExemplar, exemplar.AsPPVoid(), 0, nullptr) || !exemplar)
+			key, GZIID_cISCResExemplarCohort, cohort.AsPPVoid(), 0, nullptr) || !cohort)
 		{
 			continue;
 		}
 
-		const cISCPropertyHolder* const properties = exemplar->AsISCPropertyHolder();
+		const cISCPropertyHolder* const properties = cohort->AsISCPropertyHolder();
 		uint32_t queryExemplarId = 0;
 		const cISCProperty* const mapProperty = properties
 			? properties->GetProperty(LotMapping::kPropertyNetworkPieceMap)
@@ -536,7 +537,7 @@ void AdaptiveLots::LoadMappings()
 			|| values->GetType() != cIGZVariant::Uint32Array
 			|| !mappings.Add(queryExemplarId, {values->RefUint32(), values->GetCount()}))
 		{
-			LOG_WARN("Ignored invalid adaptive lot registry exemplar {:08X}-{:08X}-{:08X}.",
+			LOG_WARN("Ignored invalid adaptive lot mapping cohort {:08X}-{:08X}-{:08X}.",
 				key.type, key.group, key.instance);
 			continue;
 		}
