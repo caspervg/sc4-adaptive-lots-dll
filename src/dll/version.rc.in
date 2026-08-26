@@ -11,9 +11,9 @@ BEGIN
     BEGIN
         BLOCK "040904B0"
         BEGIN
-            VALUE "CompanyName", "SC4 DLL Template contributors\0"
+            VALUE "CompanyName", "SC4 Adaptive Lots DLL contributors\0"
             VALUE "FileDescription", "@PROJECT_NAME@ SimCity 4 plugin\0"
-            VALUE "FileVersion", "@SC4_TEMPLATE_APP_VERSION@\0"
+            VALUE "FileVersion", "@SC4_ADAPTIVE_LOTS_APP_VERSION@\0"
             VALUE "InternalName", "@PROJECT_NAME@\0"
             VALUE "OriginalFilename", "@PROJECT_NAME@.dll\0"
             VALUE "ProductName", "@PROJECT_NAME@\0"

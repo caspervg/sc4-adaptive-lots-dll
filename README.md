@@ -28,11 +28,9 @@ The adaptive-lot settings are:
 [SC4AdaptiveLotsDll]
 LogLevel=info
 LogToFile=true
-EnableGenericHooks=true
-EnableTollHooks=true
 ```
 
-`EnableGenericHooks` controls ordinary PlaceLot preview and placement. `EnableTollHooks` controls the vanilla toll-booth picker path. Disable a hook only for troubleshooting or compatibility testing.
+The DLL always installs both the ordinary PlaceLot hooks and the vanilla toll-booth picker hooks.
 
 With the default installation location, logs are written to:
 

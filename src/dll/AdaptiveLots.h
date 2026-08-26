@@ -2,6 +2,6 @@
 
 namespace AdaptiveLots
 {
-	bool Install(bool enableGenericHooks, bool enableTollHooks);
+	bool Install();
 	void LoadMappings();
 }

@@ -3,9 +3,6 @@ if(NOT WIN32)
     return()
 endif()
 
-set(SC4_RENDER_SERVICES_ROOT "${CMAKE_SOURCE_DIR}/vendor/sc4-render-services" CACHE PATH "Path to sc4-render-services")
-set(SC4_RENDER_SERVICES_PUBLIC_DIR "${SC4_RENDER_SERVICES_ROOT}/src")
-
 set(GZCOM_DIR "${CMAKE_SOURCE_DIR}/vendor/gzcom-dll/gzcom-dll")
 set(SC4_DLL_UTILITIES_DIR "${CMAKE_SOURCE_DIR}/vendor/sc4-dll-utilities/sc4-dll-utilities")
 
@@ -67,9 +64,6 @@ add_library(${PROJECT_NAME} SHARED
 target_compile_definitions(${PROJECT_NAME} PRIVATE
     NOMINMAX
     WIN32_LEAN_AND_MEAN
-    SC4_TEMPLATE_DLL_NAME="${PROJECT_NAME}"
-    SC4_TEMPLATE_DLL_VERSION="${PROJECT_VERSION}"
-    SC4_TEMPLATE_DLL_VERSION_LABEL="${SC4_TEMPLATE_APP_VERSION}"
 )
 
 target_include_directories(${PROJECT_NAME} PRIVATE
@@ -77,11 +71,6 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     "${MINI_INCLUDE_DIR}"
     "${SC4_DLL_UTILITIES_DIR}/include"
 )
-
-if(SC4_ENABLE_IMGUI)
-    target_compile_definitions(${PROJECT_NAME} PRIVATE IMGUI_DLL_IMPORT)
-    target_include_directories(${PROJECT_NAME} PRIVATE "${SC4_RENDER_SERVICES_PUBLIC_DIR}")
-endif()
 
 target_link_libraries(${PROJECT_NAME} PRIVATE
     gzcom2
@@ -93,10 +82,6 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     ddraw
     dxguid
 )
-
-if(SC4_ENABLE_IMGUI)
-    target_link_libraries(${PROJECT_NAME} PRIVATE SC4RenderServices::imgui)
-endif()
 
 set_target_properties(${PROJECT_NAME} PROPERTIES
     OUTPUT_NAME "SC4AdaptiveLotsDll"

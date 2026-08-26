@@ -64,8 +64,6 @@ namespace
 	void* activeControl;
 	uint32_t originalQueryId;
 	uint32_t selectedLotConfigId;
-	bool genericHooksEnabled;
-	bool tollHooksEnabled;
 	uint32_t lastLoggedQuery = UINT32_MAX;
 	uint32_t lastLoggedNetwork = UINT32_MAX;
 	uint32_t lastLoggedPiece = UINT32_MAX;
@@ -216,7 +214,7 @@ namespace
 		uint32_t* orientation,
 		void* cellCoverage)
 	{
-		if (genericHooksEnabled && control == activeControl && mappings.Contains(originalQueryId))
+		if (control == activeControl && mappings.Contains(originalQueryId))
 		{
 			selectedLotConfigId = FindMappedLotConfig(control, cursorPosition);
 			const uint32_t lotConfigId = selectedLotConfigId ? selectedLotConfigId : originalQueryId;
@@ -244,7 +242,7 @@ namespace
 	{
 		const bool result = reinterpret_cast<TollPicker>(kTollPicker)(
 			control, lotConfigId, orientation, cursorPosition, cellCoverage);
-		if (result && tollHooksEnabled)
+		if (result)
 		{
 			const uint32_t mapped = FindMappedLotConfig(control, cursorPosition);
 			if (mapped)
@@ -257,8 +255,7 @@ namespace
 
 	void __fastcall PreparePlaceLot(void* control, void*)
 	{
-		if (genericHooksEnabled
-			&& control == activeControl
+		if (control == activeControl
 			&& !FieldAt<uint8_t>(control, kTollBoothFlagOffset)
 			&& mappings.Contains(originalQueryId))
 		{
@@ -297,18 +294,13 @@ namespace
 	}
 }
 
-bool AdaptiveLots::Install(const bool enableGenericHooks, const bool enableTollHooks)
+bool AdaptiveLots::Install()
 {
-	genericHooksEnabled = enableGenericHooks;
-	tollHooksEnabled = enableTollHooks;
-	if (!enableGenericHooks && !enableTollHooks)
-	{
-		return true;
-	}
-
 	const bool valid = IsCallTo(kConstructorCall, kPlaceLotConstructor)
-		&& (!enableGenericHooks || (IsCallTo(kAutomaticFacingCall, kAutomaticFacing) && HasPlaceLotPrologue()))
-		&& (!enableTollHooks || (IsCallTo(kTollPreviewCall, kTollPicker) && IsCallTo(kTollCommitCall, kTollPicker)));
+		&& IsCallTo(kAutomaticFacingCall, kAutomaticFacing)
+		&& HasPlaceLotPrologue()
+		&& IsCallTo(kTollPreviewCall, kTollPicker)
+		&& IsCallTo(kTollCommitCall, kTollPicker);
 	if (!valid)
 	{
 		LOG_ERROR("Adaptive lot hooks were not installed because the 1.1.641 patch bytes did not match.");
@@ -316,17 +308,11 @@ bool AdaptiveLots::Install(const bool enableGenericHooks, const bool enableTollH
 	}
 
 	Patcher::InstallCallHook(kConstructorCall, reinterpret_cast<void*>(&HookedConstructor));
-	if (enableGenericHooks)
-	{
-		Patcher::InstallCallHook(kAutomaticFacingCall, reinterpret_cast<void*>(&HookedAutomaticFacing));
-		Patcher::InstallHook(kPlaceLot, &HookedPlaceLot);
-	}
-	if (enableTollHooks)
-	{
-		Patcher::InstallCallHook(kTollPreviewCall, reinterpret_cast<void*>(&HookedTollPicker));
-		Patcher::InstallCallHook(kTollCommitCall, reinterpret_cast<void*>(&HookedTollPicker));
-	}
-	LOG_INFO("Installed adaptive lot hooks (generic={}, toll={}).", enableGenericHooks, enableTollHooks);
+	Patcher::InstallCallHook(kAutomaticFacingCall, reinterpret_cast<void*>(&HookedAutomaticFacing));
+	Patcher::InstallHook(kPlaceLot, &HookedPlaceLot);
+	Patcher::InstallCallHook(kTollPreviewCall, reinterpret_cast<void*>(&HookedTollPicker));
+	Patcher::InstallCallHook(kTollCommitCall, reinterpret_cast<void*>(&HookedTollPicker));
+	LOG_INFO("Installed adaptive lot hooks.");
 	return true;
 }
 

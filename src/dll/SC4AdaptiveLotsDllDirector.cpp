@@ -23,7 +23,6 @@
 namespace {
     constexpr uint32_t kDirectorId = 0xA0907C04u;
     constexpr uint32_t kSC4MessagePostCityInit = 0x26D31EC1u;
-    static_assert(kDirectorId != 0u, "Run tools/rename_project.py or assign a unique director ID");
 }
 
 SC4AdaptiveLotsDllDirector::SC4AdaptiveLotsDllDirector() = default;
@@ -51,7 +50,7 @@ bool SC4AdaptiveLotsDllDirector::PostAppInit()
     }
 
     try {
-        AdaptiveLots::Install(settings_.GetEnableGenericHooks(), settings_.GetEnableTollHooks());
+        AdaptiveLots::Install();
         AdaptiveLots::LoadMappings();
     } catch (const wil::ResultException& e) {
         LOG_ERROR("Failed to install adaptive lot hooks: {}", e.what());
