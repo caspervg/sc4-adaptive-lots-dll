@@ -258,7 +258,11 @@ namespace
 
 			const uint32_t pieceId = occupant->PieceId();
 			const uint32_t variantCount = mappings.VariantCount(originalQueryId, entry.networkType, pieceId);
-			if (variantCount && selectedPiece != pieceId)
+			if (!variantCount)
+			{
+				continue;
+			}
+			if (selectedPiece != pieceId)
 			{
 				selectedNetwork = entry.networkType;
 				selectedPiece = pieceId;
@@ -268,13 +272,14 @@ namespace
 				originalQueryId, entry.networkType, pieceId, selectedVariant);
 			if (!lotConfigId)
 			{
-				continue;
+				return 0;
 			}
 
 			if (lotManager->GetLotConfiguration(lotConfigId))
 			{
 				return lotConfigId;
 			}
+			return 0;
 		}
 
 		selectedNetwork = LotMapping::kWildcardNetworkType;
