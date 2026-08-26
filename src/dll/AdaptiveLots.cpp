@@ -31,6 +31,7 @@
 #include "SC4UI.h"
 
 #include <string>
+#include <unordered_map>
 
 namespace
 {
@@ -51,7 +52,6 @@ namespace
 	constexpr uintptr_t kTollCommitCall = 0x004C186C;
 	constexpr size_t kLotConfigIdOffset = 0x30;
 	constexpr size_t kTollBoothFlagOffset = 0x150;
-	constexpr uint32_t kBuildingExemplarGroup = 0x07BDDF1C;
 	constexpr uint32_t kCursorTextId = 0xE9C877FA;
 
 	struct NetworkCellInfo
@@ -83,6 +83,7 @@ namespace
 	uint32_t displayedLotConfigId;
 	uint32_t displayedVariant;
 	uint32_t displayedVariantCount;
+	std::unordered_map<uint32_t, std::string> displayNameByExemplarId;
 	using KeyDown = bool (__thiscall*)(void*, int32_t, uint32_t);
 	using MouseMove = bool (__thiscall*)(void*, int32_t, int32_t, uint32_t);
 	using ChangeLotConfiguration = void (__thiscall*)(void*, uint32_t);
@@ -90,26 +91,64 @@ namespace
 
 	std::string GetLotDisplayName(const uint32_t lotConfigId)
 	{
+		if (const auto cached = displayNameByExemplarId.find(lotConfigId);
+			cached != displayNameByExemplarId.end())
+		{
+			return cached->second;
+		}
+
 		cIGZPersistResourceManagerPtr resourceManager;
-		if (!resourceManager) return {};
-		cRZAutoRefCount<cISCResExemplar> exemplar;
-		const cGZPersistResourceKey key{LotMapping::kExemplarType, kBuildingExemplarGroup, lotConfigId};
-		if (!resourceManager->GetResource(key, GZIID_cISCResExemplar, exemplar.AsPPVoid(), 0, nullptr) || !exemplar)
+		cRZAutoRefCount<cIGZPersistResourceKeyList> keys;
+		if (resourceManager)
 		{
-			return {};
+			resourceManager->GetAvailableResourceListForType(keys.AsPPObj(), LotMapping::kExemplarType);
 		}
-		const cISCPropertyHolder* properties = exemplar->AsISCPropertyHolder();
-		cRZAutoRefCount<cIGZString> localized;
-		if (PropertyUtil::GetUserVisibleName(properties, localized) && localized)
+
+		std::string itemName;
+		std::string exemplarName;
+		if (keys)
 		{
-			return localized->ToChar();
+			for (uint32_t i = 0; i < keys->Size(); ++i)
+			{
+				const cGZPersistResourceKey& key = keys->GetKey(i);
+				if (key.instance != lotConfigId)
+				{
+					continue;
+				}
+
+				cRZAutoRefCount<cISCResExemplar> exemplar;
+				if (!resourceManager->GetResource(
+					key, GZIID_cISCResExemplar, exemplar.AsPPVoid(), 0, nullptr) || !exemplar)
+				{
+					continue;
+				}
+
+				const cISCPropertyHolder* properties = exemplar->AsISCPropertyHolder();
+				if (!properties)
+				{
+					continue;
+				}
+				cRZAutoRefCount<cIGZString> localized;
+				if (PropertyUtil::GetUserVisibleName(properties, localized) && localized)
+				{
+					return displayNameByExemplarId.emplace(lotConfigId, localized->ToChar()).first->second;
+				}
+
+				cRZBaseString name;
+				constexpr uint32_t kItemNameProperty = 0x899AFBAD;
+				if (itemName.empty() && properties->GetProperty(kItemNameProperty, name))
+				{
+					itemName = name.Data();
+				}
+				if (exemplarName.empty() && PropertyUtil::GetExemplarName(properties, name))
+				{
+					exemplarName = name.Data();
+				}
+			}
 		}
-		cRZBaseString fallback;
-		if (PropertyUtil::GetExemplarName(properties, fallback))
-		{
-			return fallback.Data();
-		}
-		return {};
+
+		return displayNameByExemplarId.emplace(
+			lotConfigId, itemName.empty() ? exemplarName : itemName).first->second;
 	}
 
 	void UpdateCursorText(const uint32_t lotConfigId, const uint32_t variant, const uint32_t count)
@@ -502,6 +541,7 @@ bool AdaptiveLots::Install()
 void AdaptiveLots::LoadMappings()
 {
 	mappings.Clear();
+	displayNameByExemplarId.clear();
 	selectedLotConfigId = 0;
 	selectedVariant = 0;
 	selectedNetwork = UINT32_MAX;
