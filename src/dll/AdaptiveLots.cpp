@@ -564,7 +564,7 @@ void AdaptiveLots::LoadMappings()
 	for (uint32_t i = 0; i < keys->Size(); ++i)
 	{
 		const cGZPersistResourceKey& key = keys->GetKey(i);
-		if (key.group != LotMapping::kExemplarGroup)
+		if (key.group != LotMapping::kCohortGroup)
 		{
 			continue;
 		}
@@ -577,16 +577,14 @@ void AdaptiveLots::LoadMappings()
 		}
 
 		const cISCPropertyHolder* const properties = cohort->AsISCPropertyHolder();
-		uint32_t queryExemplarId = 0;
 		const cISCProperty* const mapProperty = properties
 			? properties->GetProperty(LotMapping::kPropertyNetworkPieceMap)
 			: nullptr;
 		const cIGZVariant* const values = mapProperty ? mapProperty->GetPropertyValue() : nullptr;
 		if (!properties
-			|| !properties->GetProperty(LotMapping::kPropertyQueryExemplar, queryExemplarId)
 			|| !values
 			|| values->GetType() != cIGZVariant::Uint32Array
-			|| !mappings.Add(queryExemplarId, {values->RefUint32(), values->GetCount()}))
+			|| !mappings.Add(key.instance, {values->RefUint32(), values->GetCount()}))
 		{
 			LOG_WARN("Ignored invalid adaptive lot mapping cohort {:08X}-{:08X}-{:08X}.",
 				key.type, key.group, key.instance);
@@ -600,6 +598,5 @@ void AdaptiveLots::LoadMappings()
 		}
 	}
 
-	mappings.NormalizeVariants();
 	LOG_INFO("Loaded adaptive lot mappings for {} query exemplar(s).", mappings.Size());
 }

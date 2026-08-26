@@ -1,6 +1,8 @@
 #include "LotMapping.h"
 
 #include <algorithm>
+#include <tuple>
+#include <utility>
 
 bool LotMapping::Table::Add(const uint32_t queryExemplarId, const std::span<const uint32_t> values)
 {
@@ -20,23 +22,36 @@ bool LotMapping::Table::Add(const uint32_t queryExemplarId, const std::span<cons
 		}
 	}
 
-	auto& entries = byQuery_[queryExemplarId];
+	std::vector<Entry> entries;
+	entries.reserve(values.size() / 4);
 	for (size_t i = 0; i < values.size(); i += 4)
 	{
-		const Entry entry{values[i], values[i + 1], values[i + 2], values[i + 3]};
-		const auto existing = std::ranges::find_if(entries, [&](const Entry& value) {
-			return value.networkType == entry.networkType && value.pieceId == entry.pieceId
-				&& value.variant == entry.variant;
-		});
-		if (existing == entries.end())
+		entries.push_back({values[i], values[i + 1], values[i + 2], values[i + 3]});
+	}
+	std::ranges::sort(entries, {}, [](const Entry& entry) {
+		return std::tuple(entry.networkType, entry.pieceId, entry.variant);
+	});
+	for (size_t i = 1; i < entries.size(); ++i)
+	{
+		if (entries[i].networkType == entries[i - 1].networkType
+			&& entries[i].pieceId == entries[i - 1].pieceId
+			&& entries[i].variant == entries[i - 1].variant)
 		{
-			entries.push_back(entry);
-		}
-		else
-		{
-			*existing = entry;
+			return false;
 		}
 	}
+	uint32_t variant = 0;
+	for (size_t i = 0; i < entries.size(); ++i)
+	{
+		if (i == 0
+			|| entries[i].networkType != entries[i - 1].networkType
+			|| entries[i].pieceId != entries[i - 1].pieceId)
+		{
+			variant = 0;
+		}
+		entries[i].variant = variant++;
+	}
+	byQuery_.insert_or_assign(queryExemplarId, std::move(entries));
 	return true;
 }
 
@@ -98,28 +113,6 @@ uint32_t LotMapping::Table::WildcardVariantCount(const uint32_t queryExemplarId)
 	return static_cast<uint32_t>(std::ranges::count_if(*entries, [](const Entry& entry) {
 		return entry.networkType == kWildcardNetworkType && entry.pieceId == 0;
 	}));
-}
-
-void LotMapping::Table::NormalizeVariants()
-{
-	for (auto& [queryExemplarId, entries] : byQuery_)
-	{
-		(void)queryExemplarId;
-		std::vector<uint32_t> normalized(entries.size());
-		// ponytail: mapping rings are tiny; group and sort if catalogs ever make this quadratic pass measurable.
-		for (size_t i = 0; i < entries.size(); ++i)
-		{
-			normalized[i] = static_cast<uint32_t>(std::ranges::count_if(entries, [&](const Entry& entry) {
-				return entry.networkType == entries[i].networkType
-					&& entry.pieceId == entries[i].pieceId
-					&& entry.variant < entries[i].variant;
-			}));
-		}
-		for (size_t i = 0; i < entries.size(); ++i)
-		{
-			entries[i].variant = normalized[i];
-		}
-	}
 }
 
 void LotMapping::Table::Clear()

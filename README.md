@@ -97,9 +97,8 @@ Mappings are detached cohort resources stored in a DBPF package. Each mapping co
 |---|---|
 | Resource type | `0x05342861` |
 | Resource group | `0xA0907C10` |
-| Resource instance | Any unique IID |
+| Resource instance | Catalog Building Exemplar IID |
 | Parent cohort | `0x00000000-0x00000000-0x00000000` |
-| `0xA0907C12` | Catalog Building Exemplar ID; one `Uint32` IID |
 | `0xA0907C13` | Network/variant mappings; a repeating `Uint32` array |
 
 Property `0xA0907C13` is a sequence of quadruples:
@@ -125,11 +124,11 @@ The network type is the game's numeric network ID from 0 through 12. Common valu
 
 The exact piece IID is important: override networks such as SAM share the Street base network type but expose different piece IDs. Rotation and flip are reported for diagnosis but are not part of the mapping key.
 
-Multiple mapping cohorts may use the same catalog building exemplar ID; their entries are merged. Variant indices determine the order within each network-type and piece-ID ring. Avoid defining the same network-type, piece-ID, and variant more than once.
+Each catalog building has one mapping cohort at `0x05342861-0xA0907C10-<catalog building IID>`. If multiple packages provide that same TGI, normal SC4 load order selects one complete mapping. Variant indices determine the order within each network-type and piece-ID ring. Duplicate indices within a ring invalidate the cohort.
 
 An entire mapping cohort is ignored when:
 
-- the catalog building exemplar ID is zero;
+- the cohort resource instance is zero;
 - the mapping array is empty or is not a multiple of four;
 - a network type is neither 0 through 12 nor the wildcard `0xFFFFFFFF`;
 - a non-wildcard piece IID, or any replacement lot configuration IID, is zero;
@@ -139,7 +138,7 @@ An entire mapping cohort is ignored when:
 The easiest probe is the DLL's debug log:
 
 1. Set `LogLevel=debug` in `SC4AdaptiveLotsDll.ini`.
-2. Create a temporary mapping cohort for the catalog building.
+2. Create a temporary mapping cohort whose resource instance is the catalog building IID.
 3. Add one placeholder quadruple for each network type you want to inspect. Use a nonzero placeholder piece IID, variant `0`, and an existing lot configuration IID.
 4. Restart the game, select the menu item, and hover over the target network pieces.
 5. Read `SC4AdaptiveLotsDll.log`.
@@ -150,7 +149,7 @@ Selecting the menu item produces a line similar to:
 PlaceLot control ... created for query 0C9DC024.
 ```
 
-Here `0C9DC024` is the catalog building exemplar ID expected by property `0xA0907C12`. Hovering over a probed network produces:
+Here `0C9DC024` is the catalog building exemplar IID to use as the mapping cohort's resource instance. Hovering over a probed network produces:
 
 ```text
 Adaptive query 0C9DC024: network 3, piece 5E54B200, rotation 0, flip 0.
@@ -164,7 +163,7 @@ Restart SimCity 4 after adding or changing a mapping package so the game reloads
 
 ## Troubleshooting
 
-- **The log says zero catalog mappings were loaded:** check the cohort resource type, group, and mapping property IDs, then restart the game.
+- **The log says zero catalog mappings were loaded:** check the cohort resource type, group, instance, and mapping property ID, then restart the game.
 - **The network and piece appear in the debug log but the preview does not change:** verify that the quadruple contains that exact pair and that the replacement lot configuration IID exists.
 - **The preview changes but placement fails:** test the replacement lot normally and check its size, transit switches, paths, and placement requirements.
 - **The hooks are not installed:** confirm that the executable is SimCity 4 version 1.1.641 and check the log for a patch-byte mismatch.

@@ -9,8 +9,7 @@ namespace LotMapping
 {
 	constexpr uint32_t kExemplarType = 0x6534284A;
 	constexpr uint32_t kCohortType = 0x05342861;
-	constexpr uint32_t kExemplarGroup = 0xA0907C10;
-	constexpr uint32_t kPropertyQueryExemplar = 0xA0907C12;
+	constexpr uint32_t kCohortGroup = 0xA0907C10;
 	constexpr uint32_t kPropertyNetworkPieceMap = 0xA0907C13;
 	constexpr uint32_t kWildcardNetworkType = UINT32_MAX;
 
@@ -32,7 +31,6 @@ namespace LotMapping
 		[[nodiscard]] uint32_t VariantCount(uint32_t queryExemplarId, uint32_t networkType, uint32_t pieceId) const;
 		[[nodiscard]] uint32_t FindWildcard(uint32_t queryExemplarId, uint32_t variant = 0) const;
 		[[nodiscard]] uint32_t WildcardVariantCount(uint32_t queryExemplarId) const;
-		void NormalizeVariants();
 		void Clear();
 		[[nodiscard]] size_t Size() const;
 
