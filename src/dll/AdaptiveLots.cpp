@@ -554,5 +554,6 @@ void AdaptiveLots::LoadMappings()
 		}
 	}
 
+	mappings.NormalizeVariants();
 	LOG_INFO("Loaded adaptive lot mappings for {} query exemplar(s).", mappings.Size());
 }

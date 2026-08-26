@@ -100,6 +100,28 @@ uint32_t LotMapping::Table::WildcardVariantCount(const uint32_t queryExemplarId)
 	}));
 }
 
+void LotMapping::Table::NormalizeVariants()
+{
+	for (auto& [queryExemplarId, entries] : byQuery_)
+	{
+		(void)queryExemplarId;
+		std::vector<uint32_t> normalized(entries.size());
+		// ponytail: mapping rings are tiny; group and sort if catalogs ever make this quadratic pass measurable.
+		for (size_t i = 0; i < entries.size(); ++i)
+		{
+			normalized[i] = static_cast<uint32_t>(std::ranges::count_if(entries, [&](const Entry& entry) {
+				return entry.networkType == entries[i].networkType
+					&& entry.pieceId == entries[i].pieceId
+					&& entry.variant < entries[i].variant;
+			}));
+		}
+		for (size_t i = 0; i < entries.size(); ++i)
+		{
+			entries[i].variant = normalized[i];
+		}
+	}
+}
+
 void LotMapping::Table::Clear()
 {
 	byQuery_.clear();
