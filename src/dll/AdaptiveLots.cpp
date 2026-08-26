@@ -204,28 +204,30 @@ namespace
 			return useWildcard();
 		}
 
-		std::array<bool, 13> probed{};
+		std::array<bool, 13> mappedNetworks{};
 		for (const auto& entry : *entries)
 		{
-			if (entry.networkType == LotMapping::kWildcardNetworkType)
+			if (entry.networkType != LotMapping::kWildcardNetworkType)
 			{
-				continue;
+				mappedNetworks[entry.networkType] = true;
 			}
-			if (probed[entry.networkType])
-			{
-				continue;
-			}
-			probed[entry.networkType] = true;
-
-			if (!GetTrafficNetworkInfo(trafficMap, x, z, 1u << entry.networkType))
+		}
+		for (uint32_t networkType = 0; networkType < mappedNetworks.size(); ++networkType)
+		{
+			if (!mappedNetworks[networkType])
 			{
 				continue;
 			}
 
-			cISC4NetworkTool* tool = manager->GetNetworkTool(static_cast<int32_t>(entry.networkType), true);
+			if (!GetTrafficNetworkInfo(trafficMap, x, z, 1u << networkType))
+			{
+				continue;
+			}
+
+			cISC4NetworkTool* tool = manager->GetNetworkTool(static_cast<int32_t>(networkType), true);
 			if (!tool)
 			{
-				tool = manager->GetNetworkTool(static_cast<int32_t>(entry.networkType), false);
+				tool = manager->GetNetworkTool(static_cast<int32_t>(networkType), false);
 			}
 			if (!tool)
 			{
@@ -236,40 +238,40 @@ namespace
 			NetworkCellInfo* const cell = reinterpret_cast<NetworkTool*>(tool)->GetCellInfo(
 				(static_cast<uint32_t>(z) << 16) | static_cast<uint16_t>(x));
 			cISC4NetworkOccupant* const occupant = cell ? cell->networkOccupant : nullptr;
-			if (!occupant || !occupant->IsOfType(static_cast<cISC4NetworkOccupant::eNetworkType>(entry.networkType)))
+			if (!occupant || !occupant->IsOfType(static_cast<cISC4NetworkOccupant::eNetworkType>(networkType)))
 			{
 				continue;
 			}
 			if (lastLoggedQuery != originalQueryId
-				|| lastLoggedNetwork != entry.networkType
+				|| lastLoggedNetwork != networkType
 				|| lastLoggedPiece != occupant->PieceId())
 			{
 				lastLoggedQuery = originalQueryId;
-				lastLoggedNetwork = entry.networkType;
+				lastLoggedNetwork = networkType;
 				lastLoggedPiece = occupant->PieceId();
 				LOG_DEBUG(
 					"Adaptive query {:08X}: network {}, piece {:08X}, rotation {}, flip {}.",
 					originalQueryId,
-					entry.networkType,
+					networkType,
 					lastLoggedPiece,
 					occupant->GetRotation(),
 					occupant->GetFlip());
 			}
 
 			const uint32_t pieceId = occupant->PieceId();
-			const uint32_t variantCount = mappings.VariantCount(originalQueryId, entry.networkType, pieceId);
+			const uint32_t variantCount = mappings.VariantCount(originalQueryId, networkType, pieceId);
 			if (!variantCount)
 			{
 				continue;
 			}
-			if (selectedNetwork != entry.networkType || selectedPiece != pieceId)
+			if (selectedNetwork != networkType || selectedPiece != pieceId)
 			{
-				selectedNetwork = entry.networkType;
+				selectedNetwork = networkType;
 				selectedPiece = pieceId;
 				selectedVariant = 0;
 			}
 			const uint32_t lotConfigId = mappings.Find(
-				originalQueryId, entry.networkType, pieceId, selectedVariant);
+				originalQueryId, networkType, pieceId, selectedVariant);
 			if (!lotConfigId)
 			{
 				return 0;
