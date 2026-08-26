@@ -115,14 +115,17 @@ namespace
 		cRZAutoRefCount<cISC4View3DWin> view = SC4UI::GetView3DWin();
 		if (!view) return;
       const std::string name = GetLotDisplayName(lotConfigId);
-      cRZBaseString title(name.empty() ? "Adaptive lot" : name);
-		title.Append(" (", 2);
-		const std::string index = std::to_string(variant + 1);
-		title.Append(index.c_str(), static_cast<uint32_t>(index.size()));
-		title.Append("/", 1);
-		const std::string total = std::to_string(count);
-		title.Append(total.c_str(), static_cast<uint32_t>(total.size()));
-		title.Append(")", 1);
+		cRZBaseString title(name.empty() ? "Adaptive lot" : name);
+		if (count > 1)
+		{
+			title.Append(" (", 2);
+			const std::string index = std::to_string(variant + 1);
+			title.Append(index.c_str(), static_cast<uint32_t>(index.size()));
+			title.Append("/", 1);
+			const std::string total = std::to_string(count);
+			title.Append(total.c_str(), static_cast<uint32_t>(total.size()));
+			title.Append(")", 1);
+		}
 		view->SetCursorText(kCursorTextId, 0, nullptr, &title, 0);
 	}
 
@@ -254,7 +257,7 @@ namespace
 
 			const uint32_t pieceId = occupant->PieceId();
 			const uint32_t variantCount = mappings.VariantCount(originalQueryId, entry.networkType, pieceId);
-			if (variantCount && (selectedNetwork != entry.networkType || selectedPiece != pieceId))
+			if (variantCount && selectedPiece != pieceId)
 			{
 				selectedNetwork = entry.networkType;
 				selectedPiece = pieceId;
