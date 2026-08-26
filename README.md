@@ -8,7 +8,7 @@ The DLL supports ordinary catalog-driven PlaceLot controls and the vanilla toll-
 
 - SimCity 4 version 1.1.641
 - Windows
-- One or more DBPF packages containing adaptive lot mapping exemplars
+- One or more DBPF packages containing adaptive lot mapping cohorts
 
 Other game versions are rejected because the hooks are specific to the 1.1.641 executable.
 
@@ -91,13 +91,14 @@ CLion can open the repository's root `CMakeLists.txt` directly. Use a 32-bit MSV
 
 ## Adding support for a lot
 
-Mappings are ordinary exemplar resources stored in a DBPF package. Each mapping exemplar uses:
+Mappings are detached cohort resources stored in a DBPF package. Each mapping cohort uses:
 
 | Field | Value |
 |---|---|
-| Resource type | `0x6534284A` |
+| Resource type | `0x05342861` |
 | Resource group | `0xA0907C10` |
 | Resource instance | Any unique IID |
+| Parent cohort | `0x00000000-0x00000000-0x00000000` |
 | `0xA0907C12` | Catalog Building Exemplar ID; one `Uint32` IID |
 | `0xA0907C13` | Network/variant mappings; a repeating `Uint32` array |
 
@@ -124,9 +125,9 @@ The network type is the game's numeric network ID from 0 through 12. Common valu
 
 The exact piece IID is important: override networks such as SAM share the Street base network type but expose different piece IDs. Rotation and flip are reported for diagnosis but are not part of the mapping key.
 
-Multiple mapping exemplars may use the same catalog building exemplar ID; their entries are merged. Variant indices form a zero-based ring for each network-type and piece-ID pair. Avoid defining the same network-type, piece-ID, and variant more than once.
+Multiple mapping cohorts may use the same catalog building exemplar ID; their entries are merged. Variant indices determine the order within each network-type and piece-ID ring. Avoid defining the same network-type, piece-ID, and variant more than once.
 
-An entire mapping exemplar is ignored when:
+An entire mapping cohort is ignored when:
 
 - the catalog building exemplar ID is zero;
 - the mapping array is empty or is not a multiple of four;
@@ -138,7 +139,7 @@ An entire mapping exemplar is ignored when:
 The easiest probe is the DLL's debug log:
 
 1. Set `LogLevel=debug` in `SC4AdaptiveLotsDll.ini`.
-2. Create a temporary mapping exemplar for the catalog building.
+2. Create a temporary mapping cohort for the catalog building.
 3. Add one placeholder quadruple for each network type you want to inspect. Use a nonzero placeholder piece IID, variant `0`, and an existing lot configuration IID.
 4. Restart the game, select the menu item, and hover over the target network pieces.
 5. Read `SC4AdaptiveLotsDll.log`.
@@ -163,7 +164,7 @@ Restart SimCity 4 after adding or changing a mapping package so the game reloads
 
 ## Troubleshooting
 
-- **The log says zero catalog mappings were loaded:** check the exemplar resource group and all mapping property IDs, then restart the game.
+- **The log says zero catalog mappings were loaded:** check the cohort resource type, group, and mapping property IDs, then restart the game.
 - **The network and piece appear in the debug log but the preview does not change:** verify that the quadruple contains that exact pair and that the replacement lot configuration IID exists.
 - **The preview changes but placement fails:** test the replacement lot normally and check its size, transit switches, paths, and placement requirements.
 - **The hooks are not installed:** confirm that the executable is SimCity 4 version 1.1.641 and check the log for a patch-byte mismatch.
