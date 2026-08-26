@@ -97,7 +97,7 @@ jobs:
           Copy-Item "LICENSE.txt" -Destination $packageDir
           Copy-Item "THIRD_PARTY_NOTICES.txt" -Destination $packageDir
           Copy-Item "vendor/gzcom-dll/LICENSE" -Destination (Join-Path $packageDir "LICENSE-gzcom-dll")
-          Copy-Item "vendor/sc4-render-services/LICENSE.txt" -Destination (Join-Path $packageDir "LICENSE-sc4-render-services.txt")
+          Copy-Item "vendor/sc4-dll-utilities/LICENSE.txt" -Destination (Join-Path $packageDir "LICENSE-sc4-dll-utilities.txt")
 
           $archivePath = Join-Path "${{ github.workspace }}" ("$($env:PROJECT_NAME)-" + $tag + "-win32.zip")
           if (Test-Path $archivePath) {

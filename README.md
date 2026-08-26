@@ -172,4 +172,4 @@ Restart SimCity 4 after adding or changing a mapping package so the game reloads
 
 ## License
 
-This project is licensed under LGPL-3.0-or-later. See `LICENSE` and `THIRD_PARTY_NOTICES.md`.
+This project is licensed under LGPL-3.0-or-later. See `LICENSE.txt` and `THIRD_PARTY_NOTICES.txt`.
