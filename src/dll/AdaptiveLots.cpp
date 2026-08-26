@@ -46,7 +46,6 @@ namespace
 	constexpr uintptr_t kPlaceLotVtable = 0x00A90738;
 	constexpr uintptr_t kPlaceLotOnKeyDown = 0x004C3060;
 	constexpr size_t kOnKeyDownVtableSlot = 14;
-	constexpr size_t kOnMouseMoveVtableSlot = 20;
 	constexpr uintptr_t kTollPicker = 0x004BFB30;
 	constexpr uintptr_t kTollPreviewCall = 0x004C3415;
 	constexpr uintptr_t kTollCommitCall = 0x004C186C;
@@ -81,11 +80,13 @@ namespace
 	uint32_t selectedVariant = 0;
 	uint32_t selectedNetwork = UINT32_MAX;
 	uint32_t selectedPiece = UINT32_MAX;
+	uint32_t displayedLotConfigId;
+	uint32_t displayedVariant;
+	uint32_t displayedVariantCount;
 	using KeyDown = bool (__thiscall*)(void*, int32_t, uint32_t);
 	using MouseMove = bool (__thiscall*)(void*, int32_t, int32_t, uint32_t);
 	using ChangeLotConfiguration = void (__thiscall*)(void*, uint32_t);
 	KeyDown originalKeyDown = nullptr;
-	MouseMove originalMouseMove = nullptr;
 
 	std::string GetLotDisplayName(const uint32_t lotConfigId)
 	{
@@ -113,9 +114,15 @@ namespace
 
 	void UpdateCursorText(const uint32_t lotConfigId, const uint32_t variant, const uint32_t count)
 	{
+		if (displayedLotConfigId == lotConfigId
+			&& displayedVariant == variant
+			&& displayedVariantCount == count)
+		{
+			return;
+		}
 		cRZAutoRefCount<cISC4View3DWin> view = SC4UI::GetView3DWin();
 		if (!view) return;
-      const std::string name = GetLotDisplayName(lotConfigId);
+		const std::string name = GetLotDisplayName(lotConfigId);
 		cRZBaseString title(name.empty() ? "Adaptive lot" : name);
 		if (count > 1)
 		{
@@ -127,13 +134,33 @@ namespace
 			title.Append(total.c_str(), static_cast<uint32_t>(total.size()));
 			title.Append(")", 1);
 		}
-		view->SetCursorText(kCursorTextId, 0, nullptr, &title, 0);
+		if (view->SetCursorText(kCursorTextId, 0, &title, nullptr, 0))
+		{
+			displayedLotConfigId = lotConfigId;
+			displayedVariant = variant;
+			displayedVariantCount = count;
+		}
 	}
 
 	void ClearCursorText()
 	{
+		if (!displayedLotConfigId) return;
 		cRZAutoRefCount<cISC4View3DWin> view = SC4UI::GetView3DWin();
 		if (view) view->ClearCursorText(kCursorTextId);
+		displayedLotConfigId = 0;
+	}
+
+	void RefreshCursorText()
+	{
+		if (!selectedLotConfigId)
+		{
+			ClearCursorText();
+			return;
+		}
+		const uint32_t count = selectedNetwork == LotMapping::kWildcardNetworkType
+			? mappings.WildcardVariantCount(originalQueryId)
+			: mappings.VariantCount(originalQueryId, selectedNetwork, selectedPiece);
+		UpdateCursorText(selectedLotConfigId, selectedVariant, count);
 	}
 	uint32_t lastLoggedQuery = UINT32_MAX;
 	uint32_t lastLoggedNetwork = UINT32_MAX;
@@ -352,26 +379,6 @@ namespace
 		return originalKeyDown ? originalKeyDown(control, vkCode, modifiers) : false;
 	}
 
-	bool __fastcall HookedMouseMove(void* control, void*, const int32_t x, const int32_t z, const uint32_t modifiers)
-	{
-		const bool result = originalMouseMove ? originalMouseMove(control, x, z, modifiers) : false;
-		if (control == activeControl && mappings.Contains(originalQueryId))
-		{
-			if (selectedLotConfigId)
-			{
-			const uint32_t count = selectedNetwork == LotMapping::kWildcardNetworkType
-					? mappings.WildcardVariantCount(originalQueryId)
-					: mappings.VariantCount(originalQueryId, selectedNetwork, selectedPiece);
-				UpdateCursorText(selectedLotConfigId, selectedVariant, count);
-			}
-			else
-			{
-				ClearCursorText();
-			}
-		}
-		return result;
-	}
-
 	using AutomaticFacing = bool (__thiscall*)(void*, void*, float*, uint32_t*, void*);
 	bool __fastcall HookedAutomaticFacing(
 		void* control,
@@ -384,6 +391,7 @@ namespace
 		if (control == activeControl && mappings.Contains(originalQueryId))
 		{
 			selectedLotConfigId = FindMappedLotConfig(control, cursorPosition);
+			RefreshCursorText();
 			const uint32_t lotConfigId = selectedLotConfigId ? selectedLotConfigId : originalQueryId;
 			if (FieldAt<uint32_t>(control, kLotConfigIdOffset) != lotConfigId)
 			{
@@ -418,6 +426,7 @@ namespace
 			{
 				*lotConfigId = selectedLotConfigId;
 			}
+			RefreshCursorText();
 		}
 		return result;
 	}
@@ -470,8 +479,7 @@ bool AdaptiveLots::Install()
 		&& HasPlaceLotPrologue()
 		&& IsCallTo(kTollPreviewCall, kTollPicker)
 		&& IsCallTo(kTollCommitCall, kTollPicker)
-		&& *reinterpret_cast<uintptr_t*>(kPlaceLotVtable + kOnKeyDownVtableSlot * sizeof(void*)) == kPlaceLotOnKeyDown
-		&& *reinterpret_cast<uintptr_t*>(kPlaceLotVtable + kOnMouseMoveVtableSlot * sizeof(void*)) == kPlaceLotMouseMove;
+		&& *reinterpret_cast<uintptr_t*>(kPlaceLotVtable + kOnKeyDownVtableSlot * sizeof(void*)) == kPlaceLotOnKeyDown;
 	if (!valid)
 	{
 		LOG_ERROR("Adaptive lot hooks were not installed because the 1.1.641 patch bytes did not match.");
@@ -483,12 +491,8 @@ bool AdaptiveLots::Install()
 	Patcher::InstallHook(kPlaceLot, &HookedPlaceLot);
 	originalKeyDown = reinterpret_cast<KeyDown>(
 		*reinterpret_cast<uintptr_t*>(kPlaceLotVtable + kOnKeyDownVtableSlot * sizeof(void*)));
-	originalMouseMove = reinterpret_cast<MouseMove>(
-		*reinterpret_cast<uintptr_t*>(kPlaceLotVtable + kOnMouseMoveVtableSlot * sizeof(void*)));
 	Patcher::InstallJumpTableHook(
 		kPlaceLotVtable + kOnKeyDownVtableSlot * sizeof(void*), reinterpret_cast<void*>(&HookedKeyDown));
-	Patcher::InstallJumpTableHook(
-		kPlaceLotVtable + kOnMouseMoveVtableSlot * sizeof(void*), reinterpret_cast<void*>(&HookedMouseMove));
 	Patcher::InstallCallHook(kTollPreviewCall, reinterpret_cast<void*>(&HookedTollPicker));
 	Patcher::InstallCallHook(kTollCommitCall, reinterpret_cast<void*>(&HookedTollPicker));
 	LOG_INFO("Installed adaptive lot hooks.");
