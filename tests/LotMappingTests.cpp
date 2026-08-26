@@ -14,20 +14,34 @@ int main()
 		12u, 0x00000004u, 0u, 0x2BF9B222u,
 	};
 	constexpr std::array invalid{13u, 1u, 0u, 1u};
+	constexpr std::array invalidWildcard{LotMapping::kWildcardNetworkType, 1u, 0u, 1u};
+	constexpr std::array invalidPiece{0u, 0u, 0u, 1u};
+	constexpr std::array invalidLot{0u, 1u, 0u, 0u};
+	constexpr std::array invalidLength{0u, 1u, 0u};
+	constexpr std::array replacement{0u, 1u, 1u, 0x33333333u};
 	constexpr std::array wildcard{
 		LotMapping::kWildcardNetworkType, 0u, 9u, 0x11111111u,
 		LotMapping::kWildcardNetworkType, 0u, 3u, 0x22222222u,
 	};
 
-	if (!table.Add(query, values) || !table.Add(query, wildcard) || table.Add(query, invalid))
+	if (!table.Add(query, values)
+		|| !table.Add(query, wildcard)
+		|| !table.Add(query, replacement)
+		|| table.Add(0, values)
+		|| table.Add(query, {})
+		|| table.Add(query, invalid)
+		|| table.Add(query, invalidWildcard)
+		|| table.Add(query, invalidPiece)
+		|| table.Add(query, invalidLot)
+		|| table.Add(query, invalidLength))
 	{
 		return 1;
 	}
 	table.NormalizeVariants();
 
-	return
+	const bool failed =
 		table.Find(query, 0, 1, 0) != 0xEBF9A440u
-		|| table.Find(query, 0, 1, 1) != 0x8BF9B356u
+		|| table.Find(query, 0, 1, 1) != 0x33333333u
 		|| table.Find(query, 2, 2) != 0x8BF9B356u
 		|| table.Find(query, 6, 3) != 0xABF9A45Cu
 		|| table.Find(query, 12, 4) != 0x2BF9B222u
@@ -35,4 +49,6 @@ int main()
 		|| table.WildcardVariantCount(query) != 2
 		|| table.FindWildcard(query, 0) != 0x22222222u
 		|| table.FindWildcard(query, 1) != 0x11111111u;
+	table.Clear();
+	return failed || table.Size() != 0 || table.Contains(query);
 }

@@ -71,6 +71,10 @@ jobs:
           cmake --preset ${{ matrix.preset }}
           cmake --build --preset ${{ matrix.build_preset }} --parallel
 
+      - name: Run mapping tests
+        shell: powershell
+        run: ctest --test-dir ${{ matrix.binary_dir }} -C ${{ matrix.config }} --output-on-failure
+
       - name: Verify DLL output
         shell: powershell
         run: |
