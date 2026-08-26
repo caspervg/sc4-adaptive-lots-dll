@@ -129,15 +129,30 @@ namespace
 
 		void* const trafficMap = reinterpret_cast<void*>(city->GetTrafficNetwork());
 		cISC4NetworkManager* const manager = city->GetNetworkManager();
+		cISC4LotConfigurationManager* const lotManager = city->GetLotConfigurationManager();
 		const auto* entries = mappings.Get(originalQueryId);
-		if (!trafficMap || !manager || !entries)
+		if (!entries || !lotManager)
 		{
 			return 0;
+		}
+		const auto useWildcard = [&]() {
+			const uint32_t lotConfigId = mappings.FindWildcard(originalQueryId, selectedVariant);
+			return lotConfigId && lotManager->GetLotConfiguration(lotConfigId) ? lotConfigId : 0u;
+		};
+		if (!trafficMap || !manager)
+		{
+			selectedNetwork = LotMapping::kWildcardNetworkType;
+			selectedPiece = 0;
+			return useWildcard();
 		}
 
 		std::array<bool, 13> probed{};
 		for (const auto& entry : *entries)
 		{
+			if (entry.networkType == LotMapping::kWildcardNetworkType)
+			{
+				continue;
+			}
 			if (probed[entry.networkType])
 			{
 				continue;
@@ -198,14 +213,15 @@ namespace
 				continue;
 			}
 
-			cISC4LotConfigurationManager* const lotManager = city->GetLotConfigurationManager();
-			if (lotManager && lotManager->GetLotConfiguration(lotConfigId))
+			if (lotManager->GetLotConfiguration(lotConfigId))
 			{
 				return lotConfigId;
 			}
 		}
 
-		return 0;
+		selectedNetwork = LotMapping::kWildcardNetworkType;
+		selectedPiece = 0;
+		return useWildcard();
 	}
 
 	using Constructor = void* (__thiscall*)(void*, uint32_t, uint32_t, uint32_t, uint8_t);
@@ -231,10 +247,13 @@ namespace
 
 	bool __fastcall HookedKeyDown(void* control, void*, const int32_t vkCode, const uint32_t modifiers)
 	{
-		if (control == activeControl && vkCode == VK_TAB && selectedNetwork != UINT32_MAX
-			&& selectedPiece != UINT32_MAX)
+		if (control == activeControl && vkCode == VK_TAB)
 		{
-			const uint32_t count = mappings.VariantCount(originalQueryId, selectedNetwork, selectedPiece);
+			const bool wildcard = selectedNetwork == LotMapping::kWildcardNetworkType
+				|| (selectedNetwork == UINT32_MAX && selectedPiece == UINT32_MAX);
+			const uint32_t count = wildcard
+				? mappings.WildcardVariantCount(originalQueryId)
+				: mappings.VariantCount(originalQueryId, selectedNetwork, selectedPiece);
 			if (count > 1)
 			{
 				const bool backwards = (GetAsyncKeyState(VK_MENU) & 0x8000) != 0;
@@ -243,8 +262,9 @@ namespace
 					: (selectedVariant + 1) % count;
 				LOG_DEBUG("Adaptive query {:08X}: selected variant {} of {}.",
 					originalQueryId, selectedVariant, count);
-				const uint32_t lotConfigId = mappings.Find(
-					originalQueryId, selectedNetwork, selectedPiece, selectedVariant);
+				const uint32_t lotConfigId = wildcard
+					? mappings.FindWildcard(originalQueryId, selectedVariant)
+					: mappings.Find(originalQueryId, selectedNetwork, selectedPiece, selectedVariant);
 				if (lotConfigId)
 				{
 					reinterpret_cast<ChangeLotConfiguration>(kChangeLotConfiguration)(control, lotConfigId);

@@ -11,7 +11,10 @@ bool LotMapping::Table::Add(const uint32_t queryExemplarId, const std::span<cons
 
 	for (size_t i = 0; i < values.size(); i += 4)
 	{
-		if (values[i] > 12 || values[i + 1] == 0 || values[i + 3] == 0)
+		if ((values[i] != kWildcardNetworkType && values[i] > 12)
+			|| (values[i] == kWildcardNetworkType && values[i + 1] != 0)
+			|| (values[i] != kWildcardNetworkType && values[i + 1] == 0)
+			|| values[i + 3] == 0)
 		{
 			return false;
 		}
@@ -75,6 +78,25 @@ uint32_t LotMapping::Table::VariantCount(
 	}
 	return static_cast<uint32_t>(std::ranges::count_if(*entries, [&](const Entry& entry) {
 		return entry.networkType == networkType && entry.pieceId == pieceId;
+	}));
+}
+
+uint32_t LotMapping::Table::FindWildcard(const uint32_t queryExemplarId, const uint32_t variant) const
+{
+	const auto* entries = Get(queryExemplarId);
+	if (!entries) return 0;
+	const auto it = std::ranges::find_if(*entries, [&](const Entry& entry) {
+		return entry.networkType == kWildcardNetworkType && entry.pieceId == 0 && entry.variant == variant;
+	});
+	return it == entries->end() ? 0 : it->lotConfigId;
+}
+
+uint32_t LotMapping::Table::WildcardVariantCount(const uint32_t queryExemplarId) const
+{
+	const auto* entries = Get(queryExemplarId);
+	if (!entries) return 0;
+	return static_cast<uint32_t>(std::ranges::count_if(*entries, [](const Entry& entry) {
+		return entry.networkType == kWildcardNetworkType && entry.pieceId == 0;
 	}));
 }
 

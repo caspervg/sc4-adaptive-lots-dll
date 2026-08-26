@@ -11,6 +11,7 @@ namespace LotMapping
 	constexpr uint32_t kExemplarGroup = 0xA0907C10;
 	constexpr uint32_t kPropertyQueryExemplar = 0xA0907C12;
 	constexpr uint32_t kPropertyNetworkPieceMap = 0xA0907C13;
+	constexpr uint32_t kWildcardNetworkType = UINT32_MAX;
 
 	struct Entry
 	{
@@ -28,6 +29,8 @@ namespace LotMapping
 		[[nodiscard]] const std::vector<Entry>* Get(uint32_t queryExemplarId) const;
 		[[nodiscard]] uint32_t Find(uint32_t queryExemplarId, uint32_t networkType, uint32_t pieceId, uint32_t variant = 0) const;
 		[[nodiscard]] uint32_t VariantCount(uint32_t queryExemplarId, uint32_t networkType, uint32_t pieceId) const;
+		[[nodiscard]] uint32_t FindWildcard(uint32_t queryExemplarId, uint32_t variant = 0) const;
+		[[nodiscard]] uint32_t WildcardVariantCount(uint32_t queryExemplarId) const;
 		void Clear();
 		[[nodiscard]] size_t Size() const;
 

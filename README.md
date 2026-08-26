@@ -118,6 +118,8 @@ For example, these entries select three different lot configurations for one cat
 
 For a network/piece ring, add consecutive zero-based variant indices. While the placement tool is active, `Tab` advances to the next variant and `Alt+Tab` moves backward; the DLL immediately reruns the vanilla mouse-move path so the preview effect and props are rebuilt from the selected lot configuration.
 
+For a catalog item that should cycle regardless of the tile under the cursor (for example a park menu item), use the wildcard quadruple `0xFFFFFFFF, 0, variant, lot configuration IID`. Wildcard variants are used only when no exact network/piece mapping applies, and they form their own ring.
+
 The network type is the game's numeric network ID from 0 through 12. Common values include Road `0`, Rail `1`, Highway `2`, Street `3`, Avenue `6`, Light Rail `8`, Monorail `9`, One-Way Road `10`, Dirt Road `11`, and Ground Highway `12`.
 
 The exact piece IID is important: override networks such as SAM share the Street base network type but expose different piece IDs. Rotation and flip are reported for diagnosis but are not part of the mapping key.
@@ -127,10 +129,9 @@ Multiple mapping exemplars may use the same catalog building exemplar ID; their 
 An entire mapping exemplar is ignored when:
 
 - the catalog building exemplar ID is zero;
-- the mapping array is empty or is not a multiple of three;
-- a network type is greater than 12;
-- a piece IID or replacement lot configuration IID is zero;
-- the schema version is missing or unsupported.
+- the mapping array is empty or is not a multiple of four;
+- a network type is neither 0 through 12 nor the wildcard `0xFFFFFFFF`;
+- a non-wildcard piece IID, or any replacement lot configuration IID, is zero;
 
 ## Finding the required IDs
 
