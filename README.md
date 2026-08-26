@@ -117,7 +117,7 @@ For example, these entries select three different lot configurations for one cat
 0x00000003, 0x5E54B900, 0, 0x0C9DBFFA   # Street / SAM 9
 ```
 
-For a network/piece ring, add consecutive zero-based variant indices. While the placement tool is active, `Tab` advances to the next variant and `Alt+Tab` moves backward; the DLL immediately reruns the vanilla mouse-move path so the preview effect and props are rebuilt from the selected lot configuration.
+Variants cycle in ascending authored-index order. While the placement tool is active, `Tab` advances to the next variant and `Shift+Tab` moves backward; the DLL immediately reruns the vanilla mouse-move path so the preview effect and props are rebuilt from the selected lot configuration.
 
 For a catalog item that should cycle regardless of the tile under the cursor (for example a park menu item), use the wildcard quadruple `0xFFFFFFFF, 0, variant, lot configuration IID`. Wildcard variants are used only when no exact network/piece mapping applies, and they form their own ring.
 
