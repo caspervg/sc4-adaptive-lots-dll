@@ -262,7 +262,7 @@ namespace
 			{
 				continue;
 			}
-			if (selectedPiece != pieceId)
+			if (selectedNetwork != entry.networkType || selectedPiece != pieceId)
 			{
 				selectedNetwork = entry.networkType;
 				selectedPiece = pieceId;
