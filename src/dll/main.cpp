@@ -1,6 +1,6 @@
-#include "SC4TemplateDllDirector.hpp"
+#include "SC4AdaptiveLotsDllDirector.hpp"
 
-static SC4TemplateDllDirector sDirector;
+static SC4AdaptiveLotsDllDirector sDirector;
 
 cRZCOMDllDirector* RZGetCOMDllDirector()
 {

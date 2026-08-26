@@ -1,5 +1,5 @@
 if(NOT WIN32)
-    message(STATUS "SC4TemplateDll is only built on Win32. Skipping the dll target.")
+    message(STATUS "SC4AdaptiveLotsDll is only built on Win32. Skipping the dll target.")
     return()
 endif()
 
@@ -60,7 +60,7 @@ add_library(${PROJECT_NAME} SHARED
     ${PROJECT_SOURCES}
     ${SC4_DLL_UTILITIES_HEADERS}
     ${SC4_DLL_UTILITIES_SOURCES}
-    "${CMAKE_CURRENT_SOURCE_DIR}/SC4TemplateDll.def"
+    "${CMAKE_CURRENT_SOURCE_DIR}/SC4AdaptiveLotsDll.def"
     "${CMAKE_CURRENT_BINARY_DIR}/version.rc"
 )
 
@@ -99,7 +99,7 @@ if(SC4_ENABLE_IMGUI)
 endif()
 
 set_target_properties(${PROJECT_NAME} PROPERTIES
-    OUTPUT_NAME "SC4TemplateDll"
+    OUTPUT_NAME "SC4AdaptiveLotsDll"
     SUFFIX ".dll"
     PREFIX ""
 )
@@ -118,10 +118,10 @@ if(WIN32 AND SC4_ENABLE_PLUGIN_DEPLOYMENT)
                 $<TARGET_FILE:${PROJECT_NAME}>
                 "${SC4_PLUGINS_DIR}/"
             COMMAND ${CMAKE_COMMAND}
-                -DSRC=${CMAKE_SOURCE_DIR}/dist/SC4TemplateDll.ini
-                -DDST=${SC4_PLUGINS_DIR}/SC4TemplateDll.ini
+                -DSRC=${CMAKE_SOURCE_DIR}/dist/SC4AdaptiveLotsDll.ini
+                -DDST=${SC4_PLUGINS_DIR}/SC4AdaptiveLotsDll.ini
                 -P ${CMAKE_SOURCE_DIR}/cmake/CopyIfNotExists.cmake
-            COMMENT "Deploying SC4TemplateDll.dll to the SimCity 4 Plugins folder"
+            COMMENT "Deploying SC4AdaptiveLotsDll.dll to the SimCity 4 Plugins folder"
         )
         message(STATUS "Plugin deployment enabled: ${SC4_PLUGINS_DIR}")
     else()
