@@ -357,7 +357,7 @@ namespace
 		{
 			if (selectedLotConfigId)
 			{
-				const uint32_t count = selectedNetwork == LotMapping::kWildcardNetworkType
+			const uint32_t count = selectedNetwork == LotMapping::kWildcardNetworkType
 					? mappings.WildcardVariantCount(originalQueryId)
 					: mappings.VariantCount(originalQueryId, selectedNetwork, selectedPiece);
 				UpdateCursorText(selectedLotConfigId, selectedVariant, count);
@@ -411,10 +411,10 @@ namespace
 			control, lotConfigId, orientation, cursorPosition, cellCoverage);
 		if (result)
 		{
-			const uint32_t mapped = FindMappedLotConfig(control, cursorPosition);
-			if (mapped)
+			selectedLotConfigId = FindMappedLotConfig(control, cursorPosition);
+			if (selectedLotConfigId)
 			{
-				*lotConfigId = mapped;
+				*lotConfigId = selectedLotConfigId;
 			}
 		}
 		return result;
