@@ -1,0 +1,16 @@
+Third-party notices
+===================
+
+The SC4 DLL Template itself is licensed under LGPL-3.0-or-later; see
+LICENSE.txt.
+
+This project uses the following third-party components:
+
+* gzcom-dll, included as source under vendor/gzcom-dll
+* sc4-dll-utilities, included as source under vendor/sc4-dll-utilities
+* sc4-render-services and Dear ImGui, included under vendor/sc4-render-services
+* spdlog, mINI, and WIL, provided through the vcpkg manifest
+
+Each component's license and copyright notice is retained in its vendored
+source tree or package metadata. Release archives should include the relevant
+upstream license files when redistributing those components.

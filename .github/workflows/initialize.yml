@@ -1,0 +1,31 @@
+name: Initialize template
+
+on:
+  push:
+
+permissions:
+  contents: write
+
+jobs:
+  initialize:
+    if: github.event.created && !github.event.repository.is_template
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Initialize from repository name
+        env:
+          REPOSITORY_NAME: ${{ github.event.repository.name }}
+        run: python tools/rename_project.py "$REPOSITORY_NAME" --repository-name
+
+      - name: Remove initializer
+        run: rm .github/workflows/initialize.yml
+
+      - name: Commit initialized project
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add --all
+          git commit -m "chore: initialize project"
+          git push

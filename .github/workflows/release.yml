@@ -1,0 +1,122 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+env:
+  VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-tag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate semantic version tag
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          if [[ ! "$TAG_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Release tags must match vMAJOR.MINOR.PATCH: $TAG_NAME"
+            exit 1
+          fi
+
+  release-win32:
+    needs: validate-tag
+    runs-on: windows-2022
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+          fetch-depth: 0
+          fetch-tags: true
+
+      - uses: actions/github-script@v8
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
+      - name: Fetch full vcpkg history
+        shell: powershell
+        run: |
+          $isShallow = (git -C vendor/vcpkg rev-parse --is-shallow-repository).Trim()
+          if ($isShallow -eq "true") {
+            git -C vendor/vcpkg fetch --unshallow
+          }
+
+      - name: Bootstrap vcpkg
+        shell: powershell
+        run: |
+          .\vendor\vcpkg\bootstrap-vcpkg.bat
+          echo "VCPKG_ROOT=${{ github.workspace }}/vendor/vcpkg" >> $env:GITHUB_ENV
+
+      - name: Rename template for release build
+        if: github.event.repository.is_template
+        shell: powershell
+        run: py -3 tools/rename_project.py SC4TemplateRelease --ui imgui
+
+      - name: Build DLL
+        shell: powershell
+        run: |
+          cmake --preset vs2022-win32-release
+          cmake --build --preset vs2022-win32-release-build --parallel
+
+      - name: Verify DLL output
+        shell: powershell
+        run: |
+          $dlls = @(Get-ChildItem "cmake-build-release-visual-studio/src/dll/Release/*.dll")
+          if ($dlls.Count -ne 1) {
+            throw "Expected one DLL, found $($dlls.Count)"
+          }
+          $dll = $dlls[0]
+          if ((Get-Item -LiteralPath $dll).Length -le 0) {
+            throw "DLL is empty: $dll"
+          }
+          "DLL_PATH=$($dll.FullName)" >> $env:GITHUB_ENV
+          "PROJECT_NAME=$($dll.BaseName)" >> $env:GITHUB_ENV
+
+      - name: Package release assets
+        shell: powershell
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $packageDir = Join-Path "${{ github.workspace }}" "release-package"
+          New-Item -ItemType Directory -Force -Path $packageDir | Out-Null
+
+          Copy-Item $env:DLL_PATH -Destination $packageDir
+          Copy-Item "dist/$($env:PROJECT_NAME).ini" -Destination $packageDir
+          Copy-Item "README.md" -Destination $packageDir
+          Copy-Item "LICENSE.txt" -Destination $packageDir
+          Copy-Item "THIRD_PARTY_NOTICES.txt" -Destination $packageDir
+          Copy-Item "vendor/gzcom-dll/LICENSE" -Destination (Join-Path $packageDir "LICENSE-gzcom-dll")
+          Copy-Item "vendor/sc4-render-services/LICENSE.txt" -Destination (Join-Path $packageDir "LICENSE-sc4-render-services.txt")
+
+          $archivePath = Join-Path "${{ github.workspace }}" ("$($env:PROJECT_NAME)-" + $tag + "-win32.zip")
+          if (Test-Path $archivePath) {
+            Remove-Item -LiteralPath $archivePath
+          }
+
+          Get-FileHash -Algorithm SHA256 (Join-Path $packageDir '*') |
+            ForEach-Object { "$($_.Hash.ToLowerInvariant())  $($_.Path | Split-Path -Leaf)" } |
+            Set-Content -Path (Join-Path $packageDir 'SHA256SUMS.txt') -Encoding ascii
+
+          Compress-Archive -Path (Join-Path $packageDir '*') -DestinationPath $archivePath
+          "RELEASE_ARCHIVE=$archivePath" >> $env:GITHUB_ENV
+
+      - name: Publish GitHub release
+        shell: powershell
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ github.ref_name }}" "$env:RELEASE_ARCHIVE" `
+            --repo "${{ github.repository }}" `
+            --title "${{ github.ref_name }}" `
+            --generate-notes

@@ -1,0 +1,92 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-win32:
+    runs-on: windows-2022
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - preset: vs2022-win32-debug
+            build_preset: vs2022-win32-debug-build
+            config: Debug
+            binary_dir: cmake-build-debug-visual-studio
+          - preset: vs2022-win32-release
+            build_preset: vs2022-win32-release-build
+            config: Release
+            binary_dir: cmake-build-release-visual-studio
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+          fetch-depth: 0
+          fetch-tags: true
+
+      - uses: actions/github-script@v8
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
+      - name: Fetch full vcpkg history
+        shell: powershell
+        run: |
+          $isShallow = (git -C vendor/vcpkg rev-parse --is-shallow-repository).Trim()
+          if ($isShallow -eq "true") {
+            git -C vendor/vcpkg fetch --unshallow
+          }
+
+      - name: Bootstrap vcpkg
+        shell: powershell
+        run: |
+          .\vendor\vcpkg\bootstrap-vcpkg.bat
+          echo "VCPKG_ROOT=${{ github.workspace }}/vendor/vcpkg" >> $env:GITHUB_ENV
+
+      - name: Rename template for CI build
+        if: github.event.repository.is_template
+        shell: powershell
+        run: py -3 tools/rename_project.py SC4TemplateCi --ui imgui
+
+      - name: Build DLL
+        shell: powershell
+        run: |
+          cmake --preset ${{ matrix.preset }}
+          cmake --build --preset ${{ matrix.build_preset }} --parallel
+
+      - name: Verify DLL output
+        shell: powershell
+        run: |
+          $dlls = @(Get-ChildItem "${{ matrix.binary_dir }}/src/dll/${{ matrix.config }}/*.dll")
+          if ($dlls.Count -ne 1) {
+            throw "Expected one DLL, found $($dlls.Count)"
+          }
+          $dll = $dlls[0]
+          if ((Get-Item -LiteralPath $dll).Length -le 0) {
+            throw "DLL is empty: $dll"
+          }
+          "DLL_PATH=$($dll.FullName)" >> $env:GITHUB_ENV
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ github.event.repository.name }}-${{ matrix.config }}-${{ github.sha }}
+          compression-level: 0
+          path: ${{ env.DLL_PATH }}
