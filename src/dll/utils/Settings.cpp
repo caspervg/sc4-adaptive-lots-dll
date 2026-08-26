@@ -11,7 +11,9 @@
 namespace {
     constexpr auto kDefaultLogLevel = spdlog::level::info;
     constexpr bool kDefaultLogToFile = true;
-    constexpr bool kDefaultStartWindowVisible = true;
+	constexpr bool kDefaultStartWindowVisible = true;
+	constexpr bool kDefaultEnableGenericHooks = true;
+	constexpr bool kDefaultEnableTollHooks = true;
     constexpr auto kSectionName = "SC4AdaptiveLotsDll";
 
     std::string ToLower(std::string value)
@@ -59,7 +61,9 @@ namespace {
 Settings::Settings()
     : logLevel_(kDefaultLogLevel)
     , logToFile_(kDefaultLogToFile)
-    , startWindowVisible_(kDefaultStartWindowVisible)
+	, startWindowVisible_(kDefaultStartWindowVisible)
+	, enableGenericHooks_(kDefaultEnableGenericHooks)
+	, enableTollHooks_(kDefaultEnableTollHooks)
 {
 }
 
@@ -95,13 +99,31 @@ void Settings::Load(const std::filesystem::path& settingsFilePath)
             }
         }
 
-        if (section.has("StartWindowVisible")) {
+		if (section.has("StartWindowVisible")) {
             bool valid = false;
             startWindowVisible_ = ParseBool(section.get("StartWindowVisible"), valid);
             if (!valid) {
                 startWindowVisible_ = kDefaultStartWindowVisible;
                 LOG_WARN("Invalid StartWindowVisible in {}", settingsFilePath.string());
-            }
+		}
+
+		if (section.has("EnableGenericHooks")) {
+			bool valid = false;
+			enableGenericHooks_ = ParseBool(section.get("EnableGenericHooks"), valid);
+			if (!valid) {
+				enableGenericHooks_ = kDefaultEnableGenericHooks;
+				LOG_WARN("Invalid EnableGenericHooks in {}", settingsFilePath.string());
+			}
+		}
+
+		if (section.has("EnableTollHooks")) {
+			bool valid = false;
+			enableTollHooks_ = ParseBool(section.get("EnableTollHooks"), valid);
+			if (!valid) {
+				enableTollHooks_ = kDefaultEnableTollHooks;
+				LOG_WARN("Invalid EnableTollHooks in {}", settingsFilePath.string());
+			}
+		}
         }
     }
     catch (const std::exception& e) {
@@ -123,5 +145,15 @@ bool Settings::GetLogToFile() const noexcept
 bool Settings::GetStartWindowVisible() const noexcept
 {
     return startWindowVisible_;
+}
+
+bool Settings::GetEnableGenericHooks() const noexcept
+{
+	return enableGenericHooks_;
+}
+
+bool Settings::GetEnableTollHooks() const noexcept
+{
+	return enableTollHooks_;
 }
 

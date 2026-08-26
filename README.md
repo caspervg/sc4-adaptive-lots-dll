@@ -1,129 +1,173 @@
-# SC4 DLL Template
+# SC4 Adaptive Lots DLL
 
-`SC4 DLL Template` is a GitHub template repository for building new SimCity 4 Win32 DLL plugins with the same basic toolchain and deployment flow used in `sc4-advanced-plop`.
+SC4 Adaptive Lots DLL lets one SimCity 4 catalog building select a different lot configuration from the network piece under the cursor. This is useful for transit-enabled lots that need separate Road, Avenue, One-Way Road, SAM, or other network-specific variants without adding a separate menu item for every variant.
 
-It includes:
+The DLL supports ordinary catalog-driven PlaceLot controls and the vanilla toll-booth placement path. It does not add menu items, activate the toll-booth tool, or contain hard-coded lot mappings.
 
-- `gzcom-dll`, `sc4-dll-utilities`, `sc4-render-services`, and `vcpkg` as git submodules
-- `spdlog`, `mINI` (`pulzed-mini` in vcpkg), and `WIL` via vcpkg manifest mode
-- LGPL-3.0-or-later licensing with third-party notices
-- the Win32 static-library vcpkg triplet `x86-windows-static-md`
-- Visual Studio 2022 Win32 debug and release presets
-- automatic post-build deployment to `Documents\SimCity 4\Plugins`
-- a starter `cRZMessage2COMDirector` implementation
-- reusable logging, version detection, and INI settings helpers
-- a minimal ImGui panel wired through `sc4-render-services`
-- a GitHub Actions workflow that builds Win32 debug and release DLL artifacts
-- a tag-based GitHub Actions release workflow that publishes a packaged release zip
+## Requirements
 
-## Quick start
+- SimCity 4 version 1.1.641
+- Windows
+- One or more DBPF packages containing adaptive lot mapping exemplars
 
-1. Create a new repository from this template on GitHub and let the
-   `Initialize template` action finish. It derives the C++ project name from
-   the repository name and commits the initialized source once.
-2. Clone it with submodules:
+Other game versions are rejected because the hooks are specific to the 1.1.641 executable.
 
-```powershell
-git clone --recurse-submodules <your-repo-url>
-cd <your-repo-directory>
+## Installation and use
+
+Copy these files into `Documents\SimCity 4\Plugins`:
+
+- `SC4AdaptiveLotsDll.dll`
+- `SC4AdaptiveLotsDll.ini`
+- the DBPF package containing mappings for the supported lots
+
+Start the game normally. Select a supported building from its existing menu item and move the cursor over mapped network pieces. The preview should change to the matching lot, and clicking should place that same configuration. Unmapped tiles retain the catalog building's original lot and normal game behavior.
+
+The adaptive-lot settings are:
+
+```ini
+[SC4AdaptiveLotsDll]
+LogLevel=info
+LogToFile=true
+EnableGenericHooks=true
+EnableTollHooks=true
 ```
 
-3. Repository-name parts use the casing common to the sibling SC4 projects,
-   for example `sc4-season-jumper` becomes `SC4SeasonJumper`. A `ui` or `imgui`
-   part selects the ImGui starter; all other names select the standalone
-   starter. To initialize manually or override that choice:
+`EnableGenericHooks` controls ordinary PlaceLot preview and placement. `EnableTollHooks` controls the vanilla toll-booth picker path. Disable a hook only for troubleshooting or compatibility testing.
 
-```powershell
-python .\tools\rename_project.py YourDllName --ui imgui
-# or infer the C++ name and UI default from a repository name:
-python .\tools\rename_project.py sc4-season-jumper --repository-name
+With the default installation location, logs are written to:
+
+```text
+Documents\SimCity 4\SC4AdaptiveLotsDll.log
 ```
 
-4. Bootstrap vcpkg:
+## How it works
+
+When the player selects a catalog building, the DLL remembers the building exemplar instance ID associated with that menu item. It keeps that original ID separate from any replacement lot configuration.
+
+While the cursor moves, the DLL:
+
+1. converts the cursor position to a city cell;
+2. checks the traffic map for mapped network types;
+3. obtains the game's network tool and network occupant for that cell;
+4. reads the occupant's exact network piece instance ID;
+5. looks up the catalog building ID, network type, and piece ID in the loaded mappings;
+6. substitutes the mapped lot configuration for preview and placement.
+
+The generic path replaces both the active lot configuration ID and the resolved configuration object used by the game's automatic-facing helper. The toll path changes only the lot configuration chosen by the vanilla toll picker, leaving its geometry and compatibility logic intact.
+
+The game still performs orientation, cell coverage, geometry, validation, and placement. If the city, network data, mapping, or replacement lot configuration is unavailable, the DLL falls back to the original catalog lot.
+
+## Building
+
+Clone with submodules and bootstrap vcpkg:
 
 ```powershell
+git clone --recurse-submodules <repository-url>
+cd sc4-adaptive-lots-dll
 .\vendor\vcpkg\bootstrap-vcpkg.bat
 ```
 
-The template defaults to the Win32 static-library triplet used by this codebase:
-
-```text
-x86-windows-static-md
-```
-
-5. Configure and build the DLL:
-
-```powershell
-cmake --preset vs2022-win32-debug
-cmake --build --preset vs2022-win32-debug-build
-```
-
-For a release build:
+Build a 32-bit release DLL with Visual Studio 2022:
 
 ```powershell
 cmake --preset vs2022-win32-release
 cmake --build --preset vs2022-win32-release-build
 ```
 
-## Deployment
+Run the mapping tests:
 
-By default, the DLL target copies the built DLL into:
+```powershell
+ctest --test-dir cmake-build-release-visual-studio -C Release --output-on-failure
+```
+
+The build deploys the DLL to `Documents\SimCity 4\Plugins` by default. The default INI is copied only when one is not already present.
+
+Disable deployment or choose another Plugins directory during configuration:
+
+```powershell
+cmake --preset vs2022-win32-release -DSC4_ENABLE_PLUGIN_DEPLOYMENT=OFF
+cmake --preset vs2022-win32-release -DSC4_PLUGINS_DIR="C:/path/to/SimCity 4/Plugins"
+```
+
+CLion can open the repository's root `CMakeLists.txt` directly. Use a 32-bit MSVC toolchain/profile; the DLL cannot be built as x64.
+
+## Adding support for a lot
+
+Mappings are ordinary exemplar resources stored in a DBPF package. Each mapping exemplar uses:
+
+| Field | Value |
+|---|---|
+| Resource type | `0x6534284A` |
+| Resource group | `0xA0907C10` |
+| Resource instance | Any unique IID |
+| `0xA0907C11` | Schema version; `Uint32` value `1` |
+| `0xA0907C12` | Catalog Building Exemplar ID; one `Uint32` IID |
+| `0xA0907C13` | Network mappings; a repeating `Uint32` array |
+
+Property `0xA0907C13` is a sequence of triples:
 
 ```text
-%USERPROFILE%\Documents\SimCity 4\Plugins
+network type, exact network piece IID, replacement lot configuration IID
 ```
 
-The default INI file in `dist/` is copied only if it does not already exist in the Plugins folder, so user changes survive rebuilds.
+For example, these entries select three different lot configurations for one catalog building:
 
-Disable automatic deployment with:
-
-```powershell
-cmake --preset vs2022-win32-debug -DSC4_ENABLE_PLUGIN_DEPLOYMENT=OFF
+```text
+0x00000000, 0x00004B00, 0x0C9DC024   # Road
+0x00000003, 0x5E54B200, 0x0C9DBFE0   # Street / SAM 2
+0x00000003, 0x5E54B900, 0x0C9DBFFA   # Street / SAM 9
 ```
 
-Set a custom Plugins directory with:
+The network type is the game's numeric network ID from 0 through 12. Common values include Road `0`, Rail `1`, Highway `2`, Street `3`, Avenue `6`, Light Rail `8`, Monorail `9`, One-Way Road `10`, Dirt Road `11`, and Ground Highway `12`.
 
-```powershell
-cmake --preset vs2022-win32-debug -DSC4_PLUGINS_DIR="C:/path/to/SimCity 4/Plugins"
+The exact piece IID is important: override networks such as SAM share the Street base network type but expose different piece IDs. Rotation and flip are reported for diagnosis but are not part of the mapping key.
+
+Multiple mapping exemplars may use the same catalog building exemplar ID; their entries are merged. Avoid defining the same network-type and piece-ID pair more than once, because the later-loaded entry replaces the earlier one.
+
+An entire mapping exemplar is ignored when:
+
+- the catalog building exemplar ID is zero;
+- the mapping array is empty or is not a multiple of three;
+- a network type is greater than 12;
+- a piece IID or replacement lot configuration IID is zero;
+- the schema version is missing or unsupported.
+
+## Finding the required IDs
+
+The easiest probe is the DLL's debug log:
+
+1. Set `LogLevel=debug` in `SC4AdaptiveLotsDll.ini`.
+2. Create a temporary mapping exemplar for the catalog building.
+3. Add one placeholder triple for each network type you want to inspect. Use a nonzero placeholder piece IID and an existing lot configuration IID.
+4. Restart the game, select the menu item, and hover over the target network pieces.
+5. Read `SC4AdaptiveLotsDll.log`.
+
+Selecting the menu item produces a line similar to:
+
+```text
+PlaceLot control ... created for query 0C9DC024.
 ```
 
-The `--ui` choice is materialized by the initializer. The generated project
-contains either the ImGui director and panel or the standalone non-ImGui
-director; there are no ImGui conditionals in generated C++.
+Here `0C9DC024` is the catalog building exemplar ID expected by property `0xA0907C12`. Hovering over a probed network produces:
 
-## CI and releases
+```text
+Adaptive query 0C9DC024: network 3, piece 5E54B200, rotation 0, flip 0.
+```
 
-- `build.yml` runs on pushes to `main`, pull requests, and manual dispatch to validate debug and release builds.
-- `initialize.yml` runs once when GitHub creates a repository from the template, then removes itself.
-- `release.yml` runs on tags matching `vMAJOR.MINOR.PATCH` and publishes a GitHub Release containing a zip with the built DLL, default INI, README, third-party notices, and upstream dependency licenses.
+Use network `3` and piece `0x5E54B200` in a real mapping triple, then replace the placeholder lot value with the IID of the matching lot configuration exemplar.
 
-## Template layout
+Lot configuration IIDs can be found by inspecting the existing variants in Reader or another DBPF editor. Verify that each replacement is a complete, working lot configuration with compatible geometry and transit behavior; the DLL selects configurations but does not repair incompatible lots.
 
-- `src/dll/`: materialized DLL source, director, and utilities
-- `templates/`: ImGui and non-ImGui director variants used by the initializer
-- `dist/`: default runtime INI file
-- `cmake/`: helper scripts used by the build
-- `tools/`: template maintenance helpers such as project renaming
-- `vendor/`: git submodules
+Restart SimCity 4 after adding or changing a mapping package so the game reloads the DBPF resources.
 
-## Notes
+## Troubleshooting
 
-- The template is intentionally Win32-only because SimCity 4 is a 32-bit game.
-- ImGui is built in-tree from `sc4-render-services` by the main CMake build.
-- `--ui none` removes the starter panel and its render-services dependency during initialization.
-- The built DLL includes version metadata generated from the CMake/Git version.
-- `sc4-dll-utilities` sources are compiled into the DLL; its `Logger.cpp` is excluded because the template uses its own spdlog-based logger.
-- `mINI` is consumed via vcpkg as the `pulzed-mini` port and included as `mini/ini.h`.
+- **The log says zero catalog mappings were loaded:** check the exemplar resource group and all three property IDs, then restart the game.
+- **The network and piece appear in the debug log but the preview does not change:** verify that the triple contains that exact pair and that the replacement lot configuration IID exists.
+- **The preview changes but placement fails:** test the replacement lot normally and check its size, transit switches, paths, and placement requirements.
+- **The hooks are not installed:** confirm that the executable is SimCity 4 version 1.1.641 and check the log for a patch-byte mismatch.
+- **An unmapped network behaves normally:** this is intentional fallback behavior.
 
-## Customization checklist
+## License
 
-After renaming the project, review these starter values:
-
-- replace the demo panel and director hooks with plugin-specific logic;
-- choose `--ui imgui` or `--ui none` when initializing the project;
-- update the panel title, INI section, and default settings;
-- choose a release version and create a `vMAJOR.MINOR.PATCH` tag;
-- keep the generated director and panel IDs unless you deliberately need compatibility with an existing plugin.
-
-The rename script replaces the starter director and panel IDs with project-specific constants, so the finished DLL does not need any ID-generation code.
-The unrenamed template intentionally does not compile; this prevents accidentally shipping the placeholder IDs.
+This project is licensed under LGPL-3.0-or-later. See `LICENSE` and `THIRD_PARTY_NOTICES.md`.

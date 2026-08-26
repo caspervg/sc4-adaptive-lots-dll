@@ -110,6 +110,15 @@ if(MSVC)
     )
 endif()
 
+if(BUILD_TESTING)
+    add_executable(SC4AdaptiveLotsMappingTests
+        "${CMAKE_SOURCE_DIR}/tests/LotMappingTests.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/LotMapping.cpp"
+    )
+    target_include_directories(SC4AdaptiveLotsMappingTests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+    add_test(NAME SC4AdaptiveLotsMappingTests COMMAND SC4AdaptiveLotsMappingTests)
+endif()
+
 if(WIN32 AND SC4_ENABLE_PLUGIN_DEPLOYMENT)
     if(SC4_PLUGINS_DIR)
         add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD

@@ -1,0 +1,37 @@
+#pragma once
+
+#include <cstdint>
+#include <span>
+#include <unordered_map>
+#include <vector>
+
+namespace LotMapping
+{
+	constexpr uint32_t kExemplarType = 0x6534284A;
+	constexpr uint32_t kExemplarGroup = 0xA0907C10;
+	constexpr uint32_t kSchemaVersion = 1;
+	constexpr uint32_t kPropertySchemaVersion = 0xA0907C11;
+	constexpr uint32_t kPropertyQueryExemplar = 0xA0907C12;
+	constexpr uint32_t kPropertyNetworkPieceMap = 0xA0907C13;
+
+	struct Entry
+	{
+		uint32_t networkType;
+		uint32_t pieceId;
+		uint32_t lotConfigId;
+	};
+
+	class Table
+	{
+	public:
+		bool Add(uint32_t queryExemplarId, std::span<const uint32_t> values);
+		[[nodiscard]] bool Contains(uint32_t queryExemplarId) const;
+		[[nodiscard]] const std::vector<Entry>* Get(uint32_t queryExemplarId) const;
+		[[nodiscard]] uint32_t Find(uint32_t queryExemplarId, uint32_t networkType, uint32_t pieceId) const;
+		void Clear();
+		[[nodiscard]] size_t Size() const;
+
+	private:
+		std::unordered_map<uint32_t, std::vector<Entry>> byQuery_;
+	};
+}

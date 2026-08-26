@@ -3,6 +3,8 @@
 #include <cRZMessage2COMDirector.h>
 #include <filesystem>
 
+#include "utils/Settings.h"
+
 class cIGZMessage2;
 class cIGZCOM;
 
@@ -26,5 +28,6 @@ public:
 
 private:
     static std::filesystem::path GetUserPluginsPath_();
-    void InitializeLogger_();
+	void InitializeLogger_();
+	Settings settings_;
 };
