@@ -3,6 +3,7 @@
 #include "LotMapping.h"
 #include "Patcher.h"
 #include "PropertyUtil.h"
+#include "RingMetadata.h"
 #include "utils/Logger.h"
 
 #include <array>
@@ -28,10 +29,13 @@
 #include "cISCResExemplarCohort.h"
 #include "cRZAutoRefCount.h"
 #include "cRZBaseString.h"
+#include "SCPropertyUtil.h"
 #include "SC4UI.h"
 
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
+#include <vector>
 
 namespace
 {
@@ -51,9 +55,19 @@ namespace
 	constexpr uintptr_t kTollPicker = 0x004BFB30;
 	constexpr uintptr_t kTollPreviewCall = 0x004C3415;
 	constexpr uintptr_t kTollCommitCall = 0x004C186C;
+	constexpr uintptr_t kCatalogBuildingAccepted = 0x007F0194;
+	constexpr uintptr_t kCatalogBuildingAcceptedContinue = 0x007F019A;
+	constexpr uintptr_t kCatalogBuildingRejected = 0x007F065B;
 	constexpr size_t kLotConfigIdOffset = 0x30;
 	constexpr size_t kTollBoothFlagOffset = 0x150;
 	constexpr uint32_t kCursorTextId = 0xE9C877FA;
+	constexpr uint32_t kPropertyExemplarType = 0x00000010;
+	constexpr uint32_t kExemplarTypeBuilding = 0x00000002;
+	constexpr uint32_t kExemplarTypeLotConfiguration = 0x00000010;
+	constexpr uint32_t kLotObjectPropertyStart = 0x88EDC900;
+	constexpr uint32_t kLotObjectPropertyEnd = 0x88EDCDFF;
+	constexpr size_t kLotObjectTypeIndex = 0;
+	constexpr size_t kLotObjectBuildingIdIndex = 12;
 
 	struct NetworkCellInfo
 	{
@@ -81,73 +95,249 @@ namespace
 	uint32_t selectedVariant = 0;
 	uint32_t selectedNetwork = UINT32_MAX;
 	uint32_t selectedPiece = UINT32_MAX;
-	std::unordered_map<uint32_t, std::string> displayNameByExemplarId;
+	RingMetadata::LotInfoMap lotInfoByConfigId;
+	RingMetadata::BuildingSet hiddenBuildingExemplarIds;
+	std::unordered_map<uint32_t, std::string> ringNameByQueryId;
+	bool catalogMenuFilteringInstalled = false;
 	using KeyDown = bool (__thiscall*)(void*, int32_t, uint32_t);
 	using MouseMove = bool (__thiscall*)(void*, int32_t, int32_t, uint32_t);
 	using ChangeLotConfiguration = void (__thiscall*)(void*, uint32_t);
 	KeyDown originalKeyDown = nullptr;
 	MouseMove originalMouseMove = nullptr;
+	using ExemplarKeyIndex = std::unordered_map<uint32_t, std::vector<cGZPersistResourceKey>>;
 
-	std::string GetLotDisplayName(const uint32_t lotConfigId)
+	bool LoadExemplarFromKeyByType(
+		cIGZPersistResourceManager* const resourceManager,
+		const cGZPersistResourceKey& key,
+		const uint32_t expectedExemplarType,
+		cRZAutoRefCount<cISCResExemplar>& exemplar)
 	{
-		if (const auto cached = displayNameByExemplarId.find(lotConfigId);
-			cached != displayNameByExemplarId.end())
+		cRZAutoRefCount<cISCResExemplar> candidate;
+		if (!resourceManager
+			|| !resourceManager->GetResource(
+				key, GZIID_cISCResExemplar, candidate.AsPPVoid(), 0, nullptr)
+			|| !candidate)
 		{
-			return cached->second;
+			return false;
 		}
 
-		cIGZPersistResourceManagerPtr resourceManager;
+		const cISCPropertyHolder* const properties = candidate->AsISCPropertyHolder();
+		uint32_t exemplarType = 0;
+		if (!properties
+			|| !SCPropertyUtil::GetPropertyValue(properties, kPropertyExemplarType, exemplarType)
+			|| exemplarType != expectedExemplarType)
+		{
+			return false;
+		}
+
+		exemplar = candidate;
+		return true;
+	}
+
+	bool LoadExemplarByType(
+		cIGZPersistResourceManager* const resourceManager,
+		const ExemplarKeyIndex& keysByInstance,
+		const uint32_t instanceId,
+		const uint32_t expectedExemplarType,
+		cRZAutoRefCount<cISCResExemplar>& exemplar,
+		cGZPersistResourceKey* const resolvedKey = nullptr)
+	{
+		const auto keys = keysByInstance.find(instanceId);
+		if (!resourceManager || keys == keysByInstance.end())
+		{
+			return false;
+		}
+
+		for (const cGZPersistResourceKey& key : keys->second)
+		{
+			if (LoadExemplarFromKeyByType(
+				resourceManager, key, expectedExemplarType, exemplar))
+			{
+				if (resolvedKey)
+				{
+					*resolvedKey = key;
+				}
+				return true;
+			}
+		}
+		return false;
+	}
+
+	std::string GetDisplayName(const cISCPropertyHolder* const properties)
+	{
+		cRZBaseString name;
+		return properties && PropertyUtil::GetDisplayName(properties, name)
+			? std::string(name.Data())
+			: std::string{};
+	}
+
+	std::string GetExemplarName(const cISCPropertyHolder* const properties)
+	{
+		cRZBaseString name;
+		return properties && PropertyUtil::GetExemplarName(properties, name)
+			? std::string(name.Data())
+			: std::string{};
+	}
+
+	RingMetadata::LotInfo ResolveLotInfo(
+		cIGZPersistResourceManager* const resourceManager,
+		const ExemplarKeyIndex& keysByInstance,
+		const uint32_t lotConfigId)
+	{
+		RingMetadata::LotInfo info;
+		cRZAutoRefCount<cISCResExemplar> lotExemplar;
+		cGZPersistResourceKey lotExemplarKey;
+		if (!LoadExemplarByType(
+			resourceManager,
+			keysByInstance,
+			lotConfigId,
+			kExemplarTypeLotConfiguration,
+			lotExemplar,
+			&lotExemplarKey))
+		{
+			return info;
+		}
+
+		const cISCPropertyHolder* const lotProperties = lotExemplar->AsISCPropertyHolder();
+		info.displayName = GetDisplayName(lotProperties);
+		info.lotExemplarName = GetExemplarName(lotProperties);
+		if (!lotProperties)
+		{
+			return info;
+		}
+
+		for (uint32_t propertyId = kLotObjectPropertyStart;
+			propertyId <= kLotObjectPropertyEnd;
+			++propertyId)
+		{
+			const cISCProperty* const property = lotProperties->GetProperty(propertyId);
+			const cIGZVariant* const value = property ? property->GetPropertyValue() : nullptr;
+			if (!value
+				|| value->GetType() != cIGZVariant::Uint32Array
+				|| value->GetCount() <= kLotObjectBuildingIdIndex)
+			{
+				continue;
+			}
+
+			const uint32_t* const data = value->RefUint32();
+			if (!data || data[kLotObjectTypeIndex] != 0 || data[kLotObjectBuildingIdIndex] == 0)
+			{
+				continue;
+			}
+
+			cRZAutoRefCount<cISCResExemplar> buildingExemplar;
+			const uint32_t buildingExemplarId = data[kLotObjectBuildingIdIndex];
+			const cGZPersistResourceKey sameGroupKey(
+				LotMapping::kExemplarType, lotExemplarKey.group, buildingExemplarId);
+			if (!LoadExemplarFromKeyByType(
+					resourceManager, sameGroupKey, kExemplarTypeBuilding, buildingExemplar)
+				&& !LoadExemplarByType(
+					resourceManager,
+					keysByInstance,
+					buildingExemplarId,
+					kExemplarTypeBuilding,
+					buildingExemplar))
+			{
+				// Rep 13 can contain a building family; unresolved references are not hidden.
+				continue;
+			}
+
+			info.buildingExemplarId = buildingExemplarId;
+			if (const std::string buildingName = GetDisplayName(buildingExemplar->AsISCPropertyHolder());
+				!buildingName.empty())
+			{
+				info.buildingDisplayName = buildingName;
+				info.displayName = buildingName;
+			}
+			break;
+		}
+		return info;
+	}
+
+	void RebuildLotInfoCache(cIGZPersistResourceManager* const resourceManager)
+	{
+		lotInfoByConfigId.clear();
+		hiddenBuildingExemplarIds.clear();
+		if (!resourceManager)
+		{
+			return;
+		}
+
+		const std::vector<uint32_t> rootQueryIds = mappings.QueryExemplarIds();
+		const std::vector<uint32_t> replacementLotConfigIds = mappings.ReplacementLotConfigIds();
+		std::unordered_set<uint32_t> workset(rootQueryIds.begin(), rootQueryIds.end());
+		workset.insert(replacementLotConfigIds.begin(), replacementLotConfigIds.end());
+
 		cRZAutoRefCount<cIGZPersistResourceKeyList> keys;
-		if (resourceManager)
-		{
-			resourceManager->GetAvailableResourceListForType(keys.AsPPObj(), LotMapping::kExemplarType);
-		}
-
-		std::string itemName;
-		std::string exemplarName;
+		resourceManager->GetAvailableResourceListForType(keys.AsPPObj(), LotMapping::kExemplarType);
+		ExemplarKeyIndex keysByInstance;
 		if (keys)
 		{
 			for (uint32_t i = 0; i < keys->Size(); ++i)
 			{
 				const cGZPersistResourceKey& key = keys->GetKey(i);
-				if (key.instance != lotConfigId)
-				{
-					continue;
-				}
-
-				cRZAutoRefCount<cISCResExemplar> exemplar;
-				if (!resourceManager->GetResource(
-					key, GZIID_cISCResExemplar, exemplar.AsPPVoid(), 0, nullptr) || !exemplar)
-				{
-					continue;
-				}
-
-				const cISCPropertyHolder* properties = exemplar->AsISCPropertyHolder();
-				if (!properties)
-				{
-					continue;
-				}
-				cRZAutoRefCount<cIGZString> localized;
-				if (PropertyUtil::GetUserVisibleName(properties, localized) && localized)
-				{
-					return displayNameByExemplarId.emplace(lotConfigId, localized->ToChar()).first->second;
-				}
-
-				cRZBaseString name;
-				constexpr uint32_t kItemNameProperty = 0x899AFBAD;
-				if (itemName.empty() && properties->GetProperty(kItemNameProperty, name))
-				{
-					itemName = name.Data();
-				}
-				if (exemplarName.empty() && PropertyUtil::GetExemplarName(properties, name))
-				{
-					exemplarName = name.Data();
-				}
+				keysByInstance[key.instance].push_back(key);
 			}
 		}
 
-		return displayNameByExemplarId.emplace(
-			lotConfigId, itemName.empty() ? exemplarName : itemName).first->second;
+		lotInfoByConfigId.reserve(workset.size());
+		for (const uint32_t lotConfigId : workset)
+		{
+			lotInfoByConfigId.emplace(
+				lotConfigId, ResolveLotInfo(resourceManager, keysByInstance, lotConfigId));
+		}
+		hiddenBuildingExemplarIds = RingMetadata::BuildHiddenBuildingSet(
+			rootQueryIds, replacementLotConfigIds, lotInfoByConfigId);
+		if (catalogMenuFilteringInstalled)
+		{
+			for (const uint32_t queryId : rootQueryIds)
+			{
+				const std::vector<LotMapping::Entry>* const entries = mappings.Get(queryId);
+				if (!entries)
+				{
+					continue;
+				}
+
+				std::unordered_set<uint32_t> loggedLotConfigIds;
+				for (const LotMapping::Entry& entry : *entries)
+				{
+					if (!loggedLotConfigIds.insert(entry.lotConfigId).second)
+					{
+						continue;
+					}
+
+					const auto info = lotInfoByConfigId.find(entry.lotConfigId);
+					if (info == lotInfoByConfigId.end()
+						|| !hiddenBuildingExemplarIds.contains(info->second.buildingExemplarId))
+					{
+						continue;
+					}
+
+					const auto ringName = ringNameByQueryId.find(queryId);
+					LOG_DEBUG(
+						"Hiding building '{}' ({:08X}) for lot exemplar '{}' ({:08X}) in ring '{}' ({:08X}).",
+						info->second.buildingDisplayName.empty()
+							? "<unnamed>" : info->second.buildingDisplayName,
+						info->second.buildingExemplarId,
+						info->second.lotExemplarName.empty()
+							? "<unnamed>" : info->second.lotExemplarName,
+						entry.lotConfigId,
+						ringName == ringNameByQueryId.end() || ringName->second.empty()
+							? "<unnamed>" : ringName->second,
+						queryId);
+				}
+			}
+		}
+		LOG_INFO(
+			"Cached metadata for {} adaptive lot configuration(s); {} replacement building menu item(s) are eligible for hiding.",
+			lotInfoByConfigId.size(),
+			hiddenBuildingExemplarIds.size());
+	}
+
+	std::string GetLotDisplayName(const uint32_t lotConfigId)
+	{
+		const auto it = lotInfoByConfigId.find(lotConfigId);
+		return it == lotInfoByConfigId.end() ? std::string{} : it->second.displayName;
 	}
 
 	void UpdateCursorText(const uint32_t lotConfigId, const uint32_t variant, const uint32_t count)
@@ -500,10 +690,49 @@ namespace
 		constexpr std::array<uint8_t, 6> expected{0x81, 0xEC, 0xA4, 0x00, 0x00, 0x00};
 		return std::memcmp(reinterpret_cast<const void*>(kPlaceLot), expected.data(), expected.size()) == 0;
 	}
+
+	bool __fastcall ShouldHideCatalogBuilding(const uint32_t buildingExemplarId)
+	{
+		return hiddenBuildingExemplarIds.contains(buildingExemplarId);
+	}
+
+	void NAKED_FUN HookedCatalogBuildingAccepted()
+	{
+		__asm
+		{
+			pushfd
+			pushad
+			mov eax, dword ptr [esp + 84h]
+			mov ecx, dword ptr [eax]
+			call ShouldHideCatalogBuilding
+			test al, al
+			jz keepBuilding
+			popad
+			popfd
+			push 007F065Bh
+			ret
+
+		keepBuilding:
+			popad
+			popfd
+			push 8
+			mov dword ptr [esp + 54h], ebx
+			push 007F019Ah
+			ret
+		}
+	}
+
+	bool HasCatalogBuildingAcceptedBytes()
+	{
+		constexpr std::array<uint8_t, 6> expected{0x6A, 0x08, 0x89, 0x5C, 0x24, 0x54};
+		return std::memcmp(
+			reinterpret_cast<const void*>(kCatalogBuildingAccepted), expected.data(), expected.size()) == 0;
+	}
 }
 
-bool AdaptiveLots::Install()
+bool AdaptiveLots::Install(const bool hideRingLotMenuItems)
 {
+	catalogMenuFilteringInstalled = false;
 	const bool valid = IsCallTo(kConstructorCall, kPlaceLotConstructor)
 		&& IsCallTo(kAutomaticFacingCall, kAutomaticFacing)
 		&& HasPlaceLotPrologue()
@@ -531,13 +760,34 @@ bool AdaptiveLots::Install()
 	Patcher::InstallCallHook(kTollPreviewCall, reinterpret_cast<void*>(&HookedTollPicker));
 	Patcher::InstallCallHook(kTollCommitCall, reinterpret_cast<void*>(&HookedTollPicker));
 	LOG_INFO("Installed adaptive lot hooks.");
+
+	if (hideRingLotMenuItems)
+	{
+		if (HasCatalogBuildingAcceptedBytes())
+		{
+			Patcher::InstallHook(kCatalogBuildingAccepted, &HookedCatalogBuildingAccepted);
+			catalogMenuFilteringInstalled = true;
+			LOG_INFO("Installed adaptive ring menu filtering hook.");
+		}
+		else
+		{
+			LOG_ERROR(
+				"Adaptive ring menu filtering was disabled because the catalog patch bytes did not match.");
+		}
+	}
+	else
+	{
+		LOG_INFO("Adaptive ring menu filtering is disabled in the settings.");
+	}
 	return true;
 }
 
 void AdaptiveLots::LoadMappings()
 {
 	mappings.Clear();
-	displayNameByExemplarId.clear();
+	lotInfoByConfigId.clear();
+	hiddenBuildingExemplarIds.clear();
+	ringNameByQueryId.clear();
 	selectedLotConfigId = 0;
 	selectedVariant = 0;
 	selectedNetwork = UINT32_MAX;
@@ -590,9 +840,11 @@ void AdaptiveLots::LoadMappings()
 		cRZBaseString name;
 		if (PropertyUtil::GetExemplarName(properties, name))
 		{
+			ringNameByQueryId.insert_or_assign(key.instance, name.Data());
 			LOG_DEBUG("Loaded adaptive lot mapping '{}'.", name.Data());
 		}
 	}
 
+	RebuildLotInfoCache(resourceManager);
 	LOG_INFO("Loaded adaptive lot mappings for {} query exemplar(s).", mappings.Size());
 }

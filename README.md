@@ -28,9 +28,13 @@ The adaptive-lot settings are:
 [SC4AdaptiveLotsDll]
 LogLevel=info
 LogToFile=true
+HideRingLotMenuItems=true
 ```
 
-The DLL always installs both the ordinary PlaceLot hooks and the vanilla toll-booth picker hooks.
+By default, `HideRingLotMenuItems` removes resolved replacement buildings from their original
+catalog menus, leaving the catalog/root building for each adaptive ring visible. Set it to `false`
+to retain every original menu item. Lots outside loaded adaptive mappings are never affected, and
+ambiguous or unresolved building references remain visible.
 
 With the default installation location, logs are written to:
 
@@ -51,7 +55,7 @@ While the cursor moves, the DLL:
 5. looks up the catalog building ID, network type, and piece ID in the loaded mappings;
 6. substitutes the mapped lot configuration for preview and placement.
 
-The generic path replaces both the active lot configuration ID and the resolved configuration object used by the game's automatic-facing helper. The toll path changes only the lot configuration chosen by the vanilla toll picker, leaving its geometry and compatibility logic intact.
+When mappings are loaded, the DLL resolves each ring lot's type-0 lot object to its building exemplar once. It first looks for the building IID in the lot exemplar's resource group, then falls back to other building exemplars with that IID. That cached building metadata supplies the variant name and, when enabled, identifies replacement building menu items to hide. The generic path replaces both the active lot configuration ID and the resolved configuration object used by the game's automatic-facing helper. The toll path changes only the lot configuration chosen by the vanilla toll picker, leaving its geometry and compatibility logic intact.
 
 The game still performs orientation, cell coverage, geometry, validation, and placement. If the city, network data, mapping, or replacement lot configuration is unavailable, the DLL falls back to the original catalog lot.
 

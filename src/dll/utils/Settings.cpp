@@ -11,6 +11,7 @@
 namespace {
     constexpr auto kDefaultLogLevel = spdlog::level::info;
     constexpr bool kDefaultLogToFile = true;
+    constexpr bool kDefaultHideRingLotMenuItems = true;
     constexpr auto kSectionName = "SC4AdaptiveLotsDll";
 
     std::string ToLower(std::string value)
@@ -58,6 +59,7 @@ namespace {
 Settings::Settings()
     : logLevel_(kDefaultLogLevel)
     , logToFile_(kDefaultLogToFile)
+    , hideRingLotMenuItems_(kDefaultHideRingLotMenuItems)
 {
 }
 
@@ -93,6 +95,15 @@ void Settings::Load(const std::filesystem::path& settingsFilePath)
             }
         }
 
+        if (section.has("HideRingLotMenuItems")) {
+            bool valid = false;
+            hideRingLotMenuItems_ = ParseBool(section.get("HideRingLotMenuItems"), valid);
+            if (!valid) {
+                hideRingLotMenuItems_ = kDefaultHideRingLotMenuItems;
+                LOG_WARN("Invalid HideRingLotMenuItems in {}", settingsFilePath.string());
+            }
+        }
+
     }
     catch (const std::exception& e) {
         LOG_ERROR("Failed to read settings from {}: {}", settingsFilePath.string(), e.what());
@@ -108,5 +119,10 @@ spdlog::level::level_enum Settings::GetLogLevel() const noexcept
 bool Settings::GetLogToFile() const noexcept
 {
     return logToFile_;
+}
+
+bool Settings::GetHideRingLotMenuItems() const noexcept
+{
+    return hideRingLotMenuItems_;
 }
 

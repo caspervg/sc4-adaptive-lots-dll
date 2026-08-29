@@ -2,6 +2,6 @@
 
 namespace AdaptiveLots
 {
-	bool Install();
+	bool Install(bool hideRingLotMenuItems);
 	void LoadMappings();
 }

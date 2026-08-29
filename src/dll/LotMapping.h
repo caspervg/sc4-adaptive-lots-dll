@@ -31,6 +31,8 @@ namespace LotMapping
 		[[nodiscard]] uint32_t VariantCount(uint32_t queryExemplarId, uint32_t networkType, uint32_t pieceId) const;
 		[[nodiscard]] uint32_t FindWildcard(uint32_t queryExemplarId, uint32_t variant = 0) const;
 		[[nodiscard]] uint32_t WildcardVariantCount(uint32_t queryExemplarId) const;
+		[[nodiscard]] std::vector<uint32_t> QueryExemplarIds() const;
+		[[nodiscard]] std::vector<uint32_t> ReplacementLotConfigIds() const;
 		void Clear();
 		[[nodiscard]] size_t Size() const;
 

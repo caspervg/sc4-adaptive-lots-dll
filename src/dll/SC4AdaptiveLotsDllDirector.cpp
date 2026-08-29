@@ -50,8 +50,7 @@ bool SC4AdaptiveLotsDllDirector::PostAppInit()
     }
 
     try {
-        AdaptiveLots::Install();
-        AdaptiveLots::LoadMappings();
+        AdaptiveLots::Install(settings_.GetHideRingLotMenuItems());
     } catch (const wil::ResultException& e) {
         LOG_ERROR("Failed to install adaptive lot hooks: {}", e.what());
     }

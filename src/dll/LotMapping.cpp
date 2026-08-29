@@ -1,6 +1,7 @@
 #include "LotMapping.h"
 
 #include <algorithm>
+#include <ranges>
 #include <tuple>
 #include <utility>
 
@@ -113,6 +114,34 @@ uint32_t LotMapping::Table::WildcardVariantCount(const uint32_t queryExemplarId)
 	return static_cast<uint32_t>(std::ranges::count_if(*entries, [](const Entry& entry) {
 		return entry.networkType == kWildcardNetworkType && entry.pieceId == 0;
 	}));
+}
+
+std::vector<uint32_t> LotMapping::Table::QueryExemplarIds() const
+{
+	std::vector<uint32_t> ids;
+	ids.reserve(byQuery_.size());
+	for (const auto& [queryExemplarId, entries] : byQuery_)
+	{
+		ids.push_back(queryExemplarId);
+	}
+	std::ranges::sort(ids);
+	return ids;
+}
+
+std::vector<uint32_t> LotMapping::Table::ReplacementLotConfigIds() const
+{
+	std::vector<uint32_t> ids;
+	for (const auto& entries : byQuery_ | std::views::values)
+	{
+		for (const Entry& entry : entries)
+		{
+			ids.push_back(entry.lotConfigId);
+		}
+	}
+	std::ranges::sort(ids);
+	const auto uniqueEnd = std::ranges::unique(ids).begin();
+	ids.erase(uniqueEnd, ids.end());
+	return ids;
 }
 
 void LotMapping::Table::Clear()

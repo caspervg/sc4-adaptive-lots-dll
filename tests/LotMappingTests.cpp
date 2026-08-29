@@ -1,6 +1,8 @@
 #include "LotMapping.h"
+#include "RingMetadata.h"
 
 #include <array>
+#include <vector>
 
 int main()
 {
@@ -48,7 +50,28 @@ int main()
 		|| table.Find(query, 3, 1) != 0
 		|| table.WildcardVariantCount(query) != 2
 		|| table.FindWildcard(query, 0) != 0x22222222u
-		|| table.FindWildcard(query, 1) != 0x11111111u;
+		|| table.FindWildcard(query, 1) != 0x11111111u
+		|| table.QueryExemplarIds() != std::vector<uint32_t>{query}
+		|| table.ReplacementLotConfigIds() != std::vector<uint32_t>{
+			0x11111111u, 0x22222222u, 0x2BF9B222u, 0x8BF9B356u, 0xABF9A45Cu, 0xEBF9A440u};
+
+	const std::array rootLots{query, 0x44444444u};
+	const std::array replacementLots{
+		0xEBF9A440u, 0x8BF9B356u, 0xABF9A45Cu, 0x55555555u, 0x66666666u};
+	const RingMetadata::LotInfoMap lotInfo{
+		{query, {0x10000000u, "Root"}},
+		{0x44444444u, {0x20000000u, "Other root"}},
+		{0xEBF9A440u, {0x30000000u, "Hidden variant"}},
+		{0x8BF9B356u, {0x30000000u, "Same hidden building"}},
+		{0xABF9A45Cu, {0x20000000u, "Also a root"}},
+		{0x55555555u, {0, "Unresolved family"}},
+		{0x66666666u, {query, "Uses the unresolved root building"}},
+	};
+	const RingMetadata::BuildingSet hiddenBuildings = RingMetadata::BuildHiddenBuildingSet(
+		rootLots, replacementLots, lotInfo);
+	failed = failed
+		|| hiddenBuildings.size() != 1
+		|| !hiddenBuildings.contains(0x30000000u);
 	LotMapping::Table replaced;
 	if (!replaced.Add(query, values) || !replaced.Add(query, replacement))
 	{
