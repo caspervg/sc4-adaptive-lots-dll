@@ -122,6 +122,8 @@ For example, these entries select three different lot configurations for one cat
 
 Variants cycle in ascending authored-index order. While the placement tool is active, `Tab` advances to the next variant and `Shift+Tab` moves backward; the DLL immediately reruns the vanilla mouse-move path so the preview effect and props are rebuilt from the selected lot configuration.
 
+When a mapping references a lot configuration that is not installed or was not registered by the game, the DLL discards that alternative while loading the city. Each surviving network/piece or wildcard ring is compacted to contiguous zero-based variant indices while preserving its authored order. Empty rings are removed, and a mapping with no surviving alternatives is disabled. Debug logging identifies discarded alternatives.
+
 For a catalog item that should cycle regardless of the tile under the cursor (for example a park menu item), use the wildcard quadruple `0xFFFFFFFF, 0, variant, lot configuration IID`. Wildcard variants are used only when no exact network/piece mapping applies, and they form their own ring.
 
 The network type is the game's numeric network ID from 0 through 12. Common values include Road `0`, Rail `1`, Highway `2`, Street `3`, Avenue `6`, Light Rail `8`, Monorail `9`, One-Way Road `10`, Dirt Road `11`, and Ground Highway `12`.

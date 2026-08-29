@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <span>
 #include <unordered_map>
 #include <vector>
@@ -21,6 +22,12 @@ namespace LotMapping
 		uint32_t lotConfigId;
 	};
 
+	struct RemovedEntry
+	{
+		uint32_t queryExemplarId;
+		Entry entry;
+	};
+
 	class Table
 	{
 	public:
@@ -33,8 +40,11 @@ namespace LotMapping
 		[[nodiscard]] uint32_t WildcardVariantCount(uint32_t queryExemplarId) const;
 		[[nodiscard]] std::vector<uint32_t> QueryExemplarIds() const;
 		[[nodiscard]] std::vector<uint32_t> ReplacementLotConfigIds() const;
+		[[nodiscard]] std::vector<RemovedEntry> RemoveUnavailableLotConfigs(
+			const std::function<bool(uint32_t)>& isAvailable);
 		void Clear();
 		[[nodiscard]] size_t Size() const;
+		[[nodiscard]] size_t EntryCount() const;
 
 	private:
 		std::unordered_map<uint32_t, std::vector<Entry>> byQuery_;

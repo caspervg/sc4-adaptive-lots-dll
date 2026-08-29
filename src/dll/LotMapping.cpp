@@ -5,6 +5,24 @@
 #include <tuple>
 #include <utility>
 
+namespace
+{
+	void NormalizeVariants(std::vector<LotMapping::Entry>& entries)
+	{
+		uint32_t variant = 0;
+		for (size_t i = 0; i < entries.size(); ++i)
+		{
+			if (i == 0
+				|| entries[i].networkType != entries[i - 1].networkType
+				|| entries[i].pieceId != entries[i - 1].pieceId)
+			{
+				variant = 0;
+			}
+			entries[i].variant = variant++;
+		}
+	}
+}
+
 bool LotMapping::Table::Add(const uint32_t queryExemplarId, const std::span<const uint32_t> values)
 {
 	if (queryExemplarId == 0 || values.empty() || values.size() % 4 != 0)
@@ -41,17 +59,7 @@ bool LotMapping::Table::Add(const uint32_t queryExemplarId, const std::span<cons
 			return false;
 		}
 	}
-	uint32_t variant = 0;
-	for (size_t i = 0; i < entries.size(); ++i)
-	{
-		if (i == 0
-			|| entries[i].networkType != entries[i - 1].networkType
-			|| entries[i].pieceId != entries[i - 1].pieceId)
-		{
-			variant = 0;
-		}
-		entries[i].variant = variant++;
-	}
+	NormalizeVariants(entries);
 	byQuery_.insert_or_assign(queryExemplarId, std::move(entries));
 	return true;
 }
@@ -144,6 +152,39 @@ std::vector<uint32_t> LotMapping::Table::ReplacementLotConfigIds() const
 	return ids;
 }
 
+std::vector<LotMapping::RemovedEntry> LotMapping::Table::RemoveUnavailableLotConfigs(
+	const std::function<bool(uint32_t)>& isAvailable)
+{
+	std::vector<RemovedEntry> removed;
+
+	for (auto query = byQuery_.begin(); query != byQuery_.end();)
+	{
+		std::vector<Entry>& entries = query->second;
+		const uint32_t queryExemplarId = query->first;
+		const auto removedRange = std::ranges::remove_if(entries, [&](const Entry& entry) {
+			if (isAvailable(entry.lotConfigId))
+			{
+				return false;
+			}
+			removed.push_back({queryExemplarId, entry});
+			return true;
+		});
+		entries.erase(removedRange.begin(), removedRange.end());
+
+		NormalizeVariants(entries);
+
+		if (entries.empty())
+		{
+			query = byQuery_.erase(query);
+		}
+		else
+		{
+			++query;
+		}
+	}
+	return removed;
+}
+
 void LotMapping::Table::Clear()
 {
 	byQuery_.clear();
@@ -152,4 +193,14 @@ void LotMapping::Table::Clear()
 size_t LotMapping::Table::Size() const
 {
 	return byQuery_.size();
+}
+
+size_t LotMapping::Table::EntryCount() const
+{
+	size_t count = 0;
+	for (const auto& entries : byQuery_ | std::views::values)
+	{
+		count += entries.size();
+	}
+	return count;
 }

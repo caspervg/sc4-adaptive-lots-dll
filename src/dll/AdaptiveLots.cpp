@@ -105,6 +105,7 @@ namespace
 	KeyDown originalKeyDown = nullptr;
 	MouseMove originalMouseMove = nullptr;
 	using ExemplarKeyIndex = std::unordered_map<uint32_t, std::vector<cGZPersistResourceKey>>;
+	cISC4City* GetCity();
 
 	bool LoadExemplarFromKeyByType(
 		cIGZPersistResourceManager* const resourceManager,
@@ -332,6 +333,52 @@ namespace
 			"Cached metadata for {} adaptive lot configuration(s); {} replacement building menu item(s) are eligible for hiding.",
 			lotInfoByConfigId.size(),
 			hiddenBuildingExemplarIds.size());
+	}
+
+	void RemoveUnavailableLotConfigurations()
+	{
+		cISC4City* const city = GetCity();
+		cISC4LotConfigurationManager* const lotManager = city
+			? city->GetLotConfigurationManager() : nullptr;
+		if (!lotManager)
+		{
+			LOG_WARN(
+				"Adaptive lot alternatives could not be validated because the lot configuration manager is unavailable.");
+			return;
+		}
+
+		const std::vector<LotMapping::RemovedEntry> removed =
+			mappings.RemoveUnavailableLotConfigs([lotManager](const uint32_t lotConfigId) {
+				return lotManager->GetLotConfiguration(lotConfigId) != nullptr;
+			});
+		std::unordered_map<uint32_t, std::unordered_set<uint32_t>> missingIdsByCohort;
+		std::unordered_set<uint32_t> affectedCohortIds;
+		for (const LotMapping::RemovedEntry& item : removed)
+		{
+			affectedCohortIds.insert(item.queryExemplarId);
+			if (!missingIdsByCohort[item.queryExemplarId].insert(item.entry.lotConfigId).second)
+			{
+				continue;
+			}
+			LOG_DEBUG(
+				"Discarded unavailable lot configuration {:08X} from adaptive mapping cohort {:08X}.",
+				item.entry.lotConfigId,
+				item.queryExemplarId);
+		}
+		if (!removed.empty())
+		{
+			const size_t retainedCount = mappings.EntryCount();
+			LOG_INFO(
+				"Validated {} adaptive lot mapping entries: retained {}, discarded {} unavailable entries across {} affected cohort(s).",
+				retainedCount + removed.size(),
+				retainedCount,
+				removed.size(),
+				affectedCohortIds.size());
+		}
+
+		std::erase_if(ringNameByQueryId, [](const auto& item) {
+			return !mappings.Contains(item.first);
+		});
 	}
 
 	std::string GetLotDisplayName(const uint32_t lotConfigId)
@@ -845,6 +892,7 @@ void AdaptiveLots::LoadMappings()
 		}
 	}
 
+	RemoveUnavailableLotConfigurations();
 	RebuildLotInfoCache(resourceManager);
 	LOG_INFO("Loaded adaptive lot mappings for {} query exemplar(s).", mappings.Size());
 }
