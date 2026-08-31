@@ -167,13 +167,18 @@ Lot configuration IIDs can be found by inspecting the existing variants in Reade
 
 ### Tooltip names
 
-While tabbing through variants, each lot's tooltip name comes from its lot configuration exemplar when the `0xA0907C14` property is present:
+While tabbing through variants, each lot's tooltip comes from its lot configuration exemplar when the `0xA0907C14` / `0xA0907C15` properties are present:
 
 | Field | Value |
 |---|---|
-| `0xA0907C14` | `Uint32` array `{0x2026960B, <LTEXT group>, <LTEXT instance>}` — the localized text shown as this variant's tooltip, overriding the building's User Visible Name Key and Item Name |
+| `0xA0907C14` | `Uint32` array `{0x2026960B, <LTEXT group>, <LTEXT instance>}` — the localized **name** shown as this variant's tooltip title, overriding the building's User Visible Name Key and Item Name |
+| `0xA0907C15` | `Uint32` array `{0x2026960B, <LTEXT group>, <LTEXT instance>}` — the localized **description** shown as the tooltip's second (regular) line. The title renders bold, the description regular |
 
-Omit the property to use the default chain, which prefers User Visible Name Key (localized) at every stage: building User Visible Name Key → building Item Name → building Exemplar Name → lot User Visible Name Key → lot Item Name → lot Exemplar Name → `Adaptive Lot 0x<lot configuration IID>`. If the property is present but blank, whitespace-only, badly formatted, or its LTEXT is missing, the tooltip for that variant is hidden entirely. Provide language-specific LTEXTs using the standard group-ID offset (as with User Visible Name Key) so the game picks the current language.
+Omit the name property to use the default chain, which prefers User Visible Name Key (localized) at every stage: building User Visible Name Key → building Item Name → building Exemplar Name → lot User Visible Name Key → lot Item Name → lot Exemplar Name → `Adaptive Lot 0x<lot configuration IID>`. If the name property is present but blank, whitespace-only, badly formatted, or its LTEXT is missing, the tooltip for that variant is hidden entirely.
+
+The description line falls back (when `0xA0907C15` is absent) to: building Item Description Key → building Item Description → lot Item Description Key → lot Item Description, then none. If the description property is present but blank, whitespace-only, badly formatted, or its LTEXT is missing, the description line is suppressed entirely (the name still shows). Resolved description text is scanned for the game's `#m:<hex>#` (money) and `#d:<hex>#` (data) format tokens, which are replaced with the value of that property on the building or lot exemplar; unresolvable tokens are dropped. Authors can use those tokens in `0xA0907C15` text too; lot properties take precedence, followed by the referenced building's properties.
+
+Provide language-specific LTEXTs using the standard group-ID offset (as with User Visible Name Key) so the game picks the current language.
 
 Restart SimCity 4 after adding or changing a mapping package so the game reloads the DBPF resources.
 

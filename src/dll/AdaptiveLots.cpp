@@ -9,7 +9,9 @@
 #include "utils/Logger.h"
 
 #include <array>
+#include <cerrno>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <windows.h>
 
@@ -20,6 +22,7 @@
 #include "cIGZVariant.h"
 #include "cIGZString.h"
 #include "cISC4App.h"
+#include "cISCStringDetokenizer.h"
 #include "cISC4City.h"
 #include "cISC4LotConfigurationManager.h"
 #include "cISC4NetworkManager.h"
@@ -65,7 +68,11 @@ namespace
 	constexpr uint32_t kCursorTextId = 0xE9C877FA;
 	constexpr uint32_t kPropertyExemplarType = 0x00000010;
 	constexpr uint32_t kPropertyItemName = 0x899AFBAD;
+	constexpr uint32_t kPropertyItemDescriptionKey = 0xCA416AB5;
+	constexpr uint32_t kPropertyItemDescription = 0x8A2602A9;
 	constexpr uint32_t kPropertyAdaptiveLotTooltipKey = 0xA0907C14;
+	constexpr uint32_t kPropertyAdaptiveLotTooltipDescriptionKey = 0xA0907C15;
+
 	constexpr uint32_t kExemplarTypeBuilding = 0x00000002;
 	constexpr uint32_t kExemplarTypeLotConfiguration = 0x00000010;
 	constexpr uint32_t kLotObjectPropertyStart = 0x88EDC900;
@@ -229,6 +236,275 @@ namespace
 		info.tooltipHidden = false;
 	}
 
+	// Token handler bound as the detokenizer's unknown-token replacement while a
+	// description is resolved. Reads the property named by the token off the
+	// exemplar property holder (the callback context).
+	static bool TokenPropertyReplacement(
+		const cIGZString& token,
+		cIGZString& outValue,
+		void* const context);
+
+	struct TokenPropertyContext
+	{
+		const cISCPropertyHolder* primary;
+		const cISCPropertyHolder* fallback;
+	};
+
+	std::string ApplyFormatTokens(
+		const std::string& text,
+		const cISCPropertyHolder* const properties,
+		const cISCPropertyHolder* const fallbackProperties = nullptr)
+	{
+		// Resolve the game's #m:<hex># (money) and #d:<hex># (data) format tokens
+		// against the given exemplar's properties, using the game's own
+		// cISCStringDetokenizer. The detokenizer's unknown-token handler is bound
+		// to the exemplar's property holder for the duration of the call, exactly
+		// as the vanilla catalog code does. #d: tokens read the property; #m:
+		// tokens additionally format as money via the game's locale formatter.
+		if (text.empty())
+		{
+			return text;
+		}
+		cISC4AppPtr app;
+		cISCStringDetokenizer* const detokenizer = app ? app->GetStringDetokenizer() : nullptr;
+		if (!detokenizer)
+		{
+			return text;
+		}
+
+		TokenPropertyContext context{properties, fallbackProperties};
+		detokenizer->AddUnknownTokenReplacementMethod(&TokenPropertyReplacement, &context, true);
+		cRZBaseString output;
+		cRZBaseString input(text);
+		detokenizer->Detokenize(input, output);
+		detokenizer->AddUnknownTokenReplacementMethod(&TokenPropertyReplacement, const_cast<cISCPropertyHolder*>(properties), false);
+
+		// ok==false just means some token failed; output is still fully built.
+		return output.Strlen() > 0 || text.empty() ? std::string(output.Data()) : text;
+	}
+
+	// Token handler bound as the detokenizer's unknown-token replacement while a
+	// description is resolved. Reads the property named by the token off the
+	// exemplar property holder (the callback context).
+	static bool TokenPropertyReplacement(
+		const cIGZString& token,
+		cIGZString& outValue,
+		void* const context)
+	{
+		const char* const tokenText = token.Data();
+		if (!tokenText || tokenText[0] == '\0' || tokenText[1] != ':')
+		{
+			return false;
+		}
+		const char kind = tokenText[0];
+		if (kind != 'm' && kind != 'M' && kind != 'd' && kind != 'D')
+		{
+			return false;
+		}
+		errno = 0;
+		const uint32_t propertyId = static_cast<uint32_t>(std::strtoul(tokenText + 2, nullptr, 16));
+		if (errno != 0 || propertyId == 0)
+		{
+			return false;
+		}
+		const auto* const propertyContext = static_cast<const TokenPropertyContext*>(context);
+		const cISCPropertyHolder* properties = propertyContext ? propertyContext->primary : nullptr;
+		const cISCProperty* property = properties ? properties->GetProperty(propertyId) : nullptr;
+		if (!property && propertyContext && propertyContext->fallback)
+		{
+			properties = propertyContext->fallback;
+			property = properties->GetProperty(propertyId);
+		}
+		const cIGZVariant* const variant = property ? property->GetPropertyValue() : nullptr;
+		if (!property || !variant)
+		{
+			LOG_DEBUG("Token '{}': property {:08X} not found on holder {:p} (has properties: {}).",
+				tokenText, propertyId, static_cast<const void*>(properties), properties != nullptr);
+			return false;
+		}
+
+		const bool isMoney = kind == 'm' || kind == 'M';
+		const uint16_t type = variant->GetType();
+		const bool isArray = (type & cIGZVariant::TypeArray) != 0;
+		switch (type & ~cIGZVariant::TypeArray)
+		{
+		case cIGZVariant::Float32:
+		{
+			float value = 0.0f;
+			if (isArray)
+			{
+			const float* const values = variant->RefFloat32();
+				if (!values || variant->GetCount() == 0)
+				{
+					return false;
+				}
+				value = values[0];
+			}
+			else if (!variant->GetValFloat32(value))
+			{
+				return false;
+			}
+			cRZBaseString output((isMoney ? "$" : "") + std::to_string(value));
+			outValue.Copy(output);
+			return true;
+		}
+		case cIGZVariant::Sint32:
+		{
+			int32_t value = 0;
+			if (isArray)
+			{
+			const int32_t* const values = variant->RefSint32();
+				if (!values || variant->GetCount() == 0)
+				{
+					return false;
+				}
+				value = values[0];
+			}
+			else if (!variant->GetValSint32(value))
+			{
+				return false;
+			}
+			cRZBaseString output((isMoney ? "$" : "") + std::to_string(value));
+			outValue.Copy(output);
+			return true;
+		}
+		case cIGZVariant::Uint32:
+		{
+			uint32_t value = 0;
+			if (isArray)
+			{
+			const uint32_t* const values = variant->RefUint32();
+				if (!values || variant->GetCount() == 0)
+				{
+					return false;
+				}
+				value = values[0];
+			}
+			else if (!variant->GetValUint32(value))
+			{
+				return false;
+			}
+			cRZBaseString output((isMoney ? "$" : "") + std::to_string(value));
+			outValue.Copy(output);
+			return true;
+		}
+		case cIGZVariant::Sint64:
+		{
+			int64_t value = 0;
+			if (isArray)
+			{
+			const int64_t* const values = variant->RefSint64();
+				if (!values || variant->GetCount() == 0)
+				{
+					return false;
+				}
+				value = values[0];
+			}
+			else if (!variant->GetValSint64(value))
+			{
+				return false;
+			}
+			cRZBaseString output((isMoney ? "$" : "") + std::to_string(value));
+			outValue.Copy(output);
+			return true;
+		}
+		default:
+			LOG_DEBUG("Token '{}': property {:08X} has unhandled variant type {:04X}.",
+				tokenText, propertyId, static_cast<uint16_t>(variant->GetType()));
+			return false;
+		}
+	}
+
+	// Resolves a description string property (raw String), truncated of whitespace
+	// and passed through the game's format-token resolver.
+	std::string ResolveDescriptionString(
+		const uint32_t propertyId,
+		const cISCPropertyHolder* const properties,
+		const cISCPropertyHolder* const fallbackProperties = nullptr)
+	{
+		cRZBaseString value;
+		if (!properties
+			|| !SCPropertyUtil::GetPropertyValue(properties, propertyId, value)
+			|| value.Data()[0] == '\0')
+		{
+			return {};
+		}
+		const std::string text = value.Data();
+		const size_t first = text.find_first_not_of(" \t\r\n");
+		if (first == std::string::npos)
+		{
+			return {};
+		}
+		const size_t last = text.find_last_not_of(" \t\r\n");
+		return ApplyFormatTokens(text.substr(first, last - first + 1), properties, fallbackProperties);
+	}
+
+	// Resolves a description key property (resource key triple), localized and
+	// passed through the token resolver.
+	std::string ResolveDescriptionKeyText(
+		const uint32_t propertyId,
+		const cISCPropertyHolder* const properties,
+		const cISCPropertyHolder* const fallbackProperties = nullptr)
+	{
+		StringResourceKey key;
+		if (!properties
+			|| !SCPropertyUtil::GetPropertyValue(properties, propertyId, key))
+		{
+			return {};
+		}
+		cRZAutoRefCount<cIGZString> localized;
+		if (!StringResourceManager::GetLocalizedString(key, localized) || !localized)
+		{
+			return {};
+		}
+		const char* const text = localized->Data();
+		const std::string value = text ? text : "";
+		const size_t first = value.find_first_not_of(" \t\r\n");
+		if (first == std::string::npos)
+		{
+			return {};
+		}
+		const size_t last = value.find_last_not_of(" \t\r\n");
+		return ApplyFormatTokens(value.substr(first, last - first + 1), properties, fallbackProperties);
+	}
+
+	// The lot exemplar's adaptive tooltip description key, when present. Absent
+	// property: default chain. Present but blank, whitespace-only, badly formatted,
+	// or pointing at a missing LTEXT: no description line (regardless of fallbacks).
+	void ResolveTooltipDescriptionKey(
+		const cISCPropertyHolder* const properties,
+		const cISCPropertyHolder* const fallbackProperties,
+		RingMetadata::LotInfo& info)
+	{
+		if (!properties || !properties->GetProperty(kPropertyAdaptiveLotTooltipDescriptionKey))
+		{
+			return;
+		}
+
+		info.tooltipDescriptionHidden = true;
+		StringResourceKey key;
+		if (!SCPropertyUtil::GetPropertyValue(properties, kPropertyAdaptiveLotTooltipDescriptionKey, key))
+		{
+			return; // Badly formatted.
+		}
+		cRZAutoRefCount<cIGZString> localized;
+		if (!StringResourceManager::GetLocalizedString(key, localized) || !localized)
+		{
+			return; // LTEXT missing.
+		}
+		const char* const text = localized->Data();
+		const std::string value = text ? text : "";
+		const size_t first = value.find_first_not_of(" \t\r\n");
+		if (first == std::string::npos)
+		{
+			return; // Empty or whitespace-only.
+		}
+		const size_t last = value.find_last_not_of(" \t\r\n");
+		info.tooltipDescription = ApplyFormatTokens(
+			value.substr(first, last - first + 1), properties, fallbackProperties);
+		info.tooltipDescriptionHidden = false;
+	}
+
 	RingMetadata::LotInfo ResolveLotInfo(
 		cIGZPersistResourceManager* const resourceManager,
 		const ExemplarKeyIndex& keysByInstance,
@@ -257,6 +533,7 @@ namespace
 			return info;
 		}
 
+		const cISCPropertyHolder* buildingProperties = nullptr;
 		for (uint32_t propertyId = kLotObjectPropertyStart;
 			propertyId <= kLotObjectPropertyEnd;
 			++propertyId)
@@ -300,8 +577,22 @@ namespace
 				info.buildingDisplayName = buildingName;
 				info.displayName = buildingName;
 			}
+			buildingProperties = buildingExemplar->AsISCPropertyHolder();
+			info.buildingDescription = ResolveDescriptionKeyText(kPropertyItemDescriptionKey, buildingProperties);
+			if (info.buildingDescription.empty())
+			{
+				info.buildingDescription = ResolveDescriptionString(kPropertyItemDescription, buildingProperties);
+			}
 			break;
 		}
+		info.lotDescription = ResolveDescriptionKeyText(
+			kPropertyItemDescriptionKey, lotProperties, buildingProperties);
+		if (info.lotDescription.empty())
+		{
+			info.lotDescription = ResolveDescriptionString(
+				kPropertyItemDescription, lotProperties, buildingProperties);
+		}
+		ResolveTooltipDescriptionKey(lotProperties, buildingProperties, info);
 		return info;
 	}
 
@@ -438,16 +729,22 @@ namespace
 		cRZAutoRefCount<cISC4View3DWin> view = SC4UI::GetView3DWin();
 		if (!view) return;
 		const auto it = lotInfoByConfigId.find(lotConfigId);
-		const std::string text = it == lotInfoByConfigId.end()
+		const RingMetadata::TooltipText text = it == lotInfoByConfigId.end()
 			? RingMetadata::ComposeTooltipText(RingMetadata::LotInfo{}, lotConfigId, variant, count)
 			: RingMetadata::ComposeTooltipText(it->second, lotConfigId, variant, count);
-		if (text.empty())
+		if (text.title.empty() && text.body.empty())
 		{
 			ClearCursorText();
 			return;
 		}
-		cRZBaseString title(text);
-		view->SetCursorText(kCursorTextId, 0, nullptr, &title, 0);
+		cRZBaseString title(text.title);
+		if (text.body.empty())
+		{
+			view->SetCursorText(kCursorTextId, 0, &title, nullptr, 0);
+			return;
+		}
+		cRZBaseString body(text.body);
+		view->SetCursorText(kCursorTextId, 0, &title, &body, 0);
 	}
 
 	void ClearCursorText()

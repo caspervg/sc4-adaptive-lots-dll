@@ -16,7 +16,18 @@ namespace RingMetadata
 		std::string buildingDisplayName;
 		std::string tooltipName;
 		bool tooltipHidden = false;
+		std::string tooltipDescription;
+		bool tooltipDescriptionHidden = false;
+		std::string buildingDescription;
+		std::string lotDescription;
 	};
+
+	struct TooltipText
+	{
+		std::string title; // Bold name line, with the (x/y) variant suffix.
+		std::string body;  // Regular description line; empty when none.
+	};
+
 
 	using LotInfoMap = std::unordered_map<uint32_t, LotInfo>;
 	using BuildingSet = std::unordered_set<uint32_t>;
@@ -26,8 +37,8 @@ namespace RingMetadata
 		std::span<const uint32_t> replacementLotConfigIds,
 		const LotInfoMap& lotInfoByConfigId);
 
-	// Full tooltip text for one variant; empty when the tooltip must be hidden.
-	[[nodiscard]] std::string ComposeTooltipText(
+	// Full tooltip text for one variant; both lines empty when the tooltip must be hidden.
+	[[nodiscard]] TooltipText ComposeTooltipText(
 		const LotInfo& info,
 		uint32_t lotConfigId,
 		uint32_t variant,

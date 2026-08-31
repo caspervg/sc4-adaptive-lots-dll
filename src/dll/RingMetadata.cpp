@@ -2,15 +2,16 @@
 
 #include <cstdio>
 
-std::string RingMetadata::ComposeTooltipText(
+RingMetadata::TooltipText RingMetadata::ComposeTooltipText(
 	const LotInfo& info,
 	const uint32_t lotConfigId,
 	const uint32_t variant,
 	const uint32_t variantCount)
 {
+	TooltipText result;
 	if (info.tooltipHidden)
 	{
-		return {};
+		return result;
 	}
 
 	std::string name = info.tooltipName;
@@ -33,7 +34,24 @@ std::string RingMetadata::ComposeTooltipText(
 		name += std::to_string(variantCount);
 		name += ')';
 	}
-	return name;
+	result.title = name;
+
+	if (!info.tooltipDescriptionHidden)
+	{
+		if (!info.tooltipDescription.empty())
+		{
+			result.body = info.tooltipDescription;
+		}
+		else if (!info.buildingDescription.empty())
+		{
+			result.body = info.buildingDescription;
+		}
+		else
+		{
+			result.body = info.lotDescription;
+		}
+	}
+	return result;
 }
 
 RingMetadata::BuildingSet RingMetadata::BuildHiddenBuildingSet(
