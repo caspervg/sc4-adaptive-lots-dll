@@ -57,6 +57,7 @@ namespace
 	constexpr uintptr_t kPlaceLotOnKeyDown = 0x004C3060;
 	constexpr size_t kOnKeyDownVtableSlot = 14;
 	constexpr size_t kOnMouseMoveVtableSlot = 20;
+	constexpr uint32_t kManualOrientationModifier = 0x100;
 	constexpr uintptr_t kTollPicker = 0x004BFB30;
 	constexpr uintptr_t kTollPreviewCall = 0x004C3415;
 	constexpr uintptr_t kTollCommitCall = 0x004C186C;
@@ -958,7 +959,8 @@ namespace
 					reinterpret_cast<ChangeLotConfiguration>(kChangeLotConfiguration)(control, lotConfigId);
 				}
 				reinterpret_cast<MouseMove>(kPlaceLotMouseMove)(
-					control, FieldAt<int32_t>(control, 0x44), FieldAt<int32_t>(control, 0x48), 0x100);
+					control, FieldAt<int32_t>(control, 0x44), FieldAt<int32_t>(control, 0x48),
+					(GetAsyncKeyState(VK_CONTROL) & 0x8000) ? kManualOrientationModifier : 0);
 				if (lotConfigId)
 				{
 					UpdateCursorText(lotConfigId, selectedVariant, count);
@@ -971,7 +973,11 @@ namespace
 
 	bool __fastcall HookedMouseMove(void* control, void*, const int32_t x, const int32_t z, const uint32_t modifiers)
 	{
-		const bool result = originalMouseMove ? originalMouseMove(control, x, z, modifiers) : false;
+		const bool manualOrientation = control == activeControl
+			&& (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
+		const bool result = originalMouseMove
+			? originalMouseMove(control, x, z, manualOrientation ? modifiers | kManualOrientationModifier : modifiers)
+			: false;
 		if (control == activeControl && mappings.Contains(originalQueryId))
 		{
 			if (selectedLotConfigId)
