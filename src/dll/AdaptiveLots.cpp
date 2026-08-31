@@ -3,6 +3,8 @@
 #include "LotMapping.h"
 #include "Patcher.h"
 #include "PropertyUtil.h"
+#include "StringResourceKey.h"
+#include "StringResourceManager.h"
 #include "RingMetadata.h"
 #include "utils/Logger.h"
 
@@ -62,6 +64,8 @@ namespace
 	constexpr size_t kTollBoothFlagOffset = 0x150;
 	constexpr uint32_t kCursorTextId = 0xE9C877FA;
 	constexpr uint32_t kPropertyExemplarType = 0x00000010;
+	constexpr uint32_t kPropertyItemName = 0x899AFBAD;
+	constexpr uint32_t kPropertyAdaptiveLotTooltipKey = 0xA0907C14;
 	constexpr uint32_t kExemplarTypeBuilding = 0x00000002;
 	constexpr uint32_t kExemplarTypeLotConfiguration = 0x00000010;
 	constexpr uint32_t kLotObjectPropertyStart = 0x88EDC900;
@@ -164,20 +168,65 @@ namespace
 		return false;
 	}
 
-	std::string GetDisplayName(const cISCPropertyHolder* const properties)
-	{
-		cRZBaseString name;
-		return properties && PropertyUtil::GetDisplayName(properties, name)
-			? std::string(name.Data())
-			: std::string{};
-	}
-
 	std::string GetExemplarName(const cISCPropertyHolder* const properties)
 	{
 		cRZBaseString name;
 		return properties && PropertyUtil::GetExemplarName(properties, name)
 			? std::string(name.Data())
 			: std::string{};
+	}
+
+	// Per-exemplar name chain for the tooltip: User Visible Name Key first,
+	// then Item Name, then Exemplar Name.
+	std::string GetVariantName(const cISCPropertyHolder* const properties)
+	{
+		cRZBaseString name;
+		if (properties
+			&& PropertyUtil::GetUserVisibleName(properties, name)
+			&& name.Data()[0] != '\0')
+		{
+			return std::string(name.Data());
+		}
+		if (properties
+			&& SCPropertyUtil::GetPropertyValue(properties, kPropertyItemName, name)
+			&& name.Data()[0] != '\0')
+		{
+			return std::string(name.Data());
+		}
+		return GetExemplarName(properties);
+	}
+
+	// The lot exemplar's adaptive tooltip name key, when present. Absent property:
+	// default chain. Present but blank, whitespace-only, badly formatted, or
+	// pointing at a missing LTEXT: hide the tooltip for this lot.
+	void ResolveTooltipNameKey(const cISCPropertyHolder* const properties, RingMetadata::LotInfo& info)
+	{
+		if (!properties || !properties->GetProperty(kPropertyAdaptiveLotTooltipKey))
+		{
+			return;
+		}
+
+		info.tooltipHidden = true;
+		StringResourceKey key;
+		if (!SCPropertyUtil::GetPropertyValue(properties, kPropertyAdaptiveLotTooltipKey, key))
+		{
+			return; // Badly formatted.
+		}
+		cRZAutoRefCount<cIGZString> localized;
+		if (!StringResourceManager::GetLocalizedString(key, localized) || !localized)
+		{
+			return; // LTEXT missing.
+		}
+		const char* const text = localized->Data();
+		const std::string value = text ? text : "";
+		const size_t first = value.find_first_not_of(" \t\r\n");
+		if (first == std::string::npos)
+		{
+			return; // Empty or whitespace-only.
+		}
+		const size_t last = value.find_last_not_of(" \t\r\n");
+		info.tooltipName = value.substr(first, last - first + 1);
+		info.tooltipHidden = false;
 	}
 
 	RingMetadata::LotInfo ResolveLotInfo(
@@ -200,8 +249,9 @@ namespace
 		}
 
 		const cISCPropertyHolder* const lotProperties = lotExemplar->AsISCPropertyHolder();
-		info.displayName = GetDisplayName(lotProperties);
+		info.displayName = GetVariantName(lotProperties);
 		info.lotExemplarName = GetExemplarName(lotProperties);
+		ResolveTooltipNameKey(lotProperties, info);
 		if (!lotProperties)
 		{
 			return info;
@@ -244,7 +294,7 @@ namespace
 			}
 
 			info.buildingExemplarId = buildingExemplarId;
-			if (const std::string buildingName = GetDisplayName(buildingExemplar->AsISCPropertyHolder());
+			if (const std::string buildingName = GetVariantName(buildingExemplar->AsISCPropertyHolder());
 				!buildingName.empty())
 			{
 				info.buildingDisplayName = buildingName;
@@ -381,28 +431,22 @@ namespace
 		});
 	}
 
-	std::string GetLotDisplayName(const uint32_t lotConfigId)
-	{
-		const auto it = lotInfoByConfigId.find(lotConfigId);
-		return it == lotInfoByConfigId.end() ? std::string{} : it->second.displayName;
-	}
+	void ClearCursorText();
 
 	void UpdateCursorText(const uint32_t lotConfigId, const uint32_t variant, const uint32_t count)
 	{
 		cRZAutoRefCount<cISC4View3DWin> view = SC4UI::GetView3DWin();
 		if (!view) return;
-		const std::string name = GetLotDisplayName(lotConfigId);
-		cRZBaseString title(name.empty() ? "Adaptive lot" : name);
-		if (count > 1)
+		const auto it = lotInfoByConfigId.find(lotConfigId);
+		const std::string text = it == lotInfoByConfigId.end()
+			? RingMetadata::ComposeTooltipText(RingMetadata::LotInfo{}, lotConfigId, variant, count)
+			: RingMetadata::ComposeTooltipText(it->second, lotConfigId, variant, count);
+		if (text.empty())
 		{
-			title.Append(" (", 2);
-			const std::string index = std::to_string(variant + 1);
-			title.Append(index.c_str(), static_cast<uint32_t>(index.size()));
-			title.Append("/", 1);
-			const std::string total = std::to_string(count);
-			title.Append(total.c_str(), static_cast<uint32_t>(total.size()));
-			title.Append(")", 1);
+			ClearCursorText();
+			return;
 		}
+		cRZBaseString title(text);
 		view->SetCursorText(kCursorTextId, 0, nullptr, &title, 0);
 	}
 

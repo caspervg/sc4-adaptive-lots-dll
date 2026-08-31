@@ -165,6 +165,16 @@ Use network `3` and piece `0x5E54B200` in a real mapping quadruple, then replace
 
 Lot configuration IIDs can be found by inspecting the existing variants in Reader or another DBPF editor. Verify that each replacement is a complete, working lot configuration with compatible geometry and transit behavior; the DLL selects configurations but does not repair incompatible lots.
 
+### Tooltip names
+
+While tabbing through variants, each lot's tooltip name comes from its lot configuration exemplar when the `0xA0907C14` property is present:
+
+| Field | Value |
+|---|---|
+| `0xA0907C14` | `Uint32` array `{0x2026960B, <LTEXT group>, <LTEXT instance>}` — the localized text shown as this variant's tooltip, overriding the building's User Visible Name Key and Item Name |
+
+Omit the property to use the default chain, which prefers User Visible Name Key (localized) at every stage: building User Visible Name Key → building Item Name → building Exemplar Name → lot User Visible Name Key → lot Item Name → lot Exemplar Name → `Adaptive Lot 0x<lot configuration IID>`. If the property is present but blank, whitespace-only, badly formatted, or its LTEXT is missing, the tooltip for that variant is hidden entirely. Provide language-specific LTEXTs using the standard group-ID offset (as with User Visible Name Key) so the game picks the current language.
+
 Restart SimCity 4 after adding or changing a mapping package so the game reloads the DBPF resources.
 
 ## Troubleshooting

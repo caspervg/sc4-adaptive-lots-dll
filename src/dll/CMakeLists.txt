@@ -103,6 +103,13 @@ if(BUILD_TESTING)
     )
     target_include_directories(SC4AdaptiveLotsMappingTests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
     add_test(NAME SC4AdaptiveLotsMappingTests COMMAND SC4AdaptiveLotsMappingTests)
+
+    add_executable(SC4AdaptiveLotsTooltipTests
+        "${CMAKE_SOURCE_DIR}/tests/TooltipTextTests.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/RingMetadata.cpp"
+    )
+    target_include_directories(SC4AdaptiveLotsTooltipTests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+    add_test(NAME SC4AdaptiveLotsTooltipTests COMMAND SC4AdaptiveLotsTooltipTests)
 endif()
 
 if(WIN32 AND SC4_ENABLE_PLUGIN_DEPLOYMENT)
